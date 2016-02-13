@@ -5,6 +5,7 @@
 #include <sstream>
 #include <iostream>
 #include <iomanip>
+#include <time.h>
 
 namespace tester
 {
@@ -25,6 +26,7 @@ namespace tester
   // ----------------------------------------
   // Evaluer class
   // ----------------------------------------
+  // {{{
 
   class Evaluer
   {
@@ -45,9 +47,11 @@ namespace tester
 
   };
 
+  // }}}
   // ----------------------------------------
   // LeftValue class
   // ----------------------------------------
+  // {{{
 
   struct PUT_COMPLEX_LOGICAL_EXPRESSIONS_IN_PARENTHESIS;
 
@@ -107,9 +111,11 @@ namespace tester
       Evaluer& evaluer;
     };
 
+  // }}}
   // ----------------------------------------
   // TestMonitor class
   // ----------------------------------------
+  // {{{
 
   class TestMonitor {
   public:
@@ -127,9 +133,11 @@ namespace tester
 
   TestMonitor test_monitor;
 
+  // }}}
   // ----------------------------------------
   // CaseMonitor class
   // ----------------------------------------
+  // {{{
 
   class CaseMonitor {
   public:
@@ -147,9 +155,11 @@ namespace tester
 
   CaseMonitor case_monitor;
 
+  // }}}
   // ----------------------------------------
   // LeftValue definitions
   // ----------------------------------------
+  // {{{
 
   template <typename T>
     LeftValue<T> Evaluer::operator<< (T leftValue)
@@ -225,9 +235,11 @@ namespace tester
     out << prefix << std::boolalpha << "    " << val << std::endl;
   }
 
+  // }}}
   // ----------------------------------------
   // TestMonitor definitions
   // ----------------------------------------
+  // {{{
 
   void TestMonitor::init(std::string testName)
   {
@@ -269,9 +281,11 @@ namespace tester
     this->failed += !passed;
   }
 
+  // }}}
   // ----------------------------------------
   // CaseMonitor definitions
   // ----------------------------------------
+  // {{{
 
   void CaseMonitor::init(std::string caseName)
   {
@@ -304,10 +318,11 @@ namespace tester
 
 
 
-
+  // }}}
   // ----------------------------------------
   // Stream and cast operator existence checker
   // ----------------------------------------
+  // {{{
 
   namespace Checker
   {
@@ -377,20 +392,108 @@ namespace tester
         }
       };
   }
+  
+  // }}}
+  // ----------------------------------------
+  // TimeTester class with definitions
+  // ----------------------------------------
+  // {{{
+  class TimeTester
+  {
+  public:
+    TimeTester(std::string name);
+
+    void start();
+    void stop();
+    timespec get_diff();
+    void report();
+
+  private:
+    timespec start_time, stop_time, diff;
+    std::string name;
+
+  };
+
+  TimeTester::TimeTester(std::string name): name(name) { }
+
+  void TimeTester::start()
+  {
+    clock_gettime(CLOCK_MONOTONIC_RAW, &start_time);
+  }
+
+  void TimeTester::stop()
+  {
+    clock_gettime(CLOCK_MONOTONIC_RAW, &stop_time);
+    if (stop_time.tv_nsec - start_time.tv_nsec < 0)
+    {
+      diff.tv_sec = stop_time.tv_sec - start_time.tv_sec - 1;
+      diff.tv_nsec = 1000000000 + stop_time.tv_nsec - start_time.tv_nsec;
+    }
+    else
+    {
+      diff.tv_sec = stop_time.tv_sec - start_time.tv_sec;
+      diff.tv_nsec = stop_time.tv_nsec - start_time.tv_nsec;
+    }
+  }
+
+  timespec TimeTester::get_diff()
+  {
+    return diff;
+  }
+
+  void TimeTester::report()
+  {
+    std::cout << "Timer \"" << name << "\": " << diff.tv_sec << "s ";
+    long res = diff.tv_nsec;
+    int nsec = res % 1000;
+    res /= 1000;
+    int usec = res % 1000;
+    res /= 1000;
+    int msec = res % 1000;
+
+    std::cout << msec << "ms ";
+    std::cout << usec << "us ";
+    std::cout << nsec << "ns";
+    std::cout << " ( ";
+    std::cerr << diff.tv_sec << "."
+      << std::setw(3) << std::setfill('0') << msec
+      << std::setw(3) << std::setfill('0') << usec
+      << std::setw(3) << std::setfill('0') << nsec;
+    std::cout << "s )\n";
+    std::cerr << std::endl;
+    std::cout.fill(' ');
+  }
 
 }
+  
+  // }}}
+  // ----------------------------------------
+  // Macros
+  // ----------------------------------------
+  // {{{
 
 #define CHECK(expr) tester::Evaluer(#expr, __FILE__, __LINE__) << expr;
 
-#define TEST(name) std::cerr << "\n" << "BEGIN TEST " << #name << " ("  << __FILE__ << ":" << __LINE__ << ")\n" << std::endl;\
-  tester::test_monitor.init(name);\
+#define TEST(name) std::cerr << "\n" << "Begin test \"" << #name << "\" ("  << __FILE__ << ":" << __LINE__ << ")\n" << std::endl;\
+  tester::test_monitor.init(#name);\
 
 #define END_TEST  tester::test_monitor.report();
 
-#define TEST_CASE(name) std::cerr << tester::prefix << "TC " << #name << " ("  << __FILE__ << ":" << __LINE__ << ")\n" << std::endl;\
-  tester::case_monitor.init(name);
+#define TEST_CASE(name) std::cerr << tester::prefix << "TC \"" << #name << "\" ("  << __FILE__ << ":" << __LINE__ << ")\n" << std::endl;\
+  tester::case_monitor.init(#name);
 
 #define END_CASE tester::case_monitor.report();
+
+#define START_TIMER(name) std::cout << "\n" << "Starting timer \"" << #name << "\" (" << __FILE__ << ":" << __LINE__ << ")\n" << std::endl;\
+  tester::TimeTester time_tester_##name(#name);\
+  time_tester_##name.start();
+
+#define STOP_TIMER(name) time_tester_##name.stop();\
+  std::cout << "Stopping timer \"" << #name << "\"\n" << std::endl;\
+
+#define REPORT_TIMER(name) time_tester_##name.report();
+
+  // }}}
 
 #endif
 
