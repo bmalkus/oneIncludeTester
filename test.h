@@ -5,7 +5,12 @@
 #include <sstream>
 #include <iostream>
 #include <iomanip>
+#include <map>
+#include <list>
 #include <time.h>
+#include <algorithm>
+
+#pragma clang diagnostic ignored "-Woverloaded-shift-op-parentheses"
 
 namespace tester
 {
@@ -119,19 +124,24 @@ namespace tester
 
   class TestMonitor {
   public:
-    TestMonitor(): passed(0), failed(0) { }
-
-    void init(std::string testName);
     std::string getTestName();
     void report();
-    void addTest(bool passed);
+
+    static void addMonitor(const std::string& testName);
+    static bool anyTestFailed();
+    static void removeMonitor();
+    static void addCase(bool passed);
+    static TestMonitor& getMostRecent();
 
   private:
+    static int overallyFailed;
+    static std::list<TestMonitor> testMonitors;
+
+    TestMonitor(const std::string& testName);
+
     int passed, failed;
     std::string testName;
   };
-
-  TestMonitor test_monitor;
 
   // }}}
   // ----------------------------------------
@@ -146,7 +156,7 @@ namespace tester
     void init(std::string caseName);
     std::string getCaseName();
     void report();
-    void addTest(bool passed);
+    void addCheck(bool passed);
 
   private:
     std::string caseName;
@@ -157,7 +167,7 @@ namespace tester
 
   // }}}
   // ----------------------------------------
-  // LeftValue definitions
+  // Evaluer definitions
   // ----------------------------------------
   // {{{
 
@@ -166,6 +176,12 @@ namespace tester
     {
       return LeftValue<T>(leftValue, *this);
     }
+
+  // }}}
+  // ----------------------------------------
+  // LeftValue definitions
+  // ----------------------------------------
+  // {{{
 
   template <typename U>
   template <typename V>
@@ -211,12 +227,11 @@ namespace tester
 
   void assertCommonPart(std::ostream &out, bool passed, Evaluer &evaluer)
   {
-    std::string note = passed ? "PASSED" : "FAILED";
+    case_monitor.addCheck(passed);
+    std::string note = passed ? "Passed check" : "FAILED check";
     out << prefix << note << " (" <<  evaluer.getFilename() << ":" << evaluer.getLineNo() << ") "<< std::endl;
-    out << prefix << "    " << evaluer.getExpr()  << std::endl;
+    std::cout << prefix << "    " << evaluer.getExpr()  << std::endl;
     out << prefix << "    Evaluated:" << std::endl;
-    test_monitor.addTest(passed);
-    case_monitor.addTest(passed);
   }
 
   template <typename U>
@@ -232,7 +247,7 @@ namespace tester
   {
     std::ostream& out = val ? std::cout : std::cerr;
     assertCommonPart(out, val, evaluer);
-    out << prefix << std::boolalpha << "    " << val << std::endl;
+    std::cout << prefix << std::string(4, ' ') << std::boolalpha << "    " << val << std::endl;
   }
 
   // }}}
@@ -241,13 +256,30 @@ namespace tester
   // ----------------------------------------
   // {{{
 
-  void TestMonitor::init(std::string testName)
-  {
-    this->testName = testName;
-    passed = 0;
-    failed = 0;
+  int TestMonitor::overallyFailed = 0;
+  std::list<TestMonitor> TestMonitor::testMonitors;
 
+  void TestMonitor::addMonitor(const std::string& testName)
+  {
+    testMonitors.push_back(TestMonitor(testName));
+    
     prefix += "    ";
+  }
+
+  void TestMonitor::removeMonitor()
+  {
+    testMonitors.pop_back();
+
+    prefix = prefix.substr(0, prefix.length() - 4);
+  }
+
+  TestMonitor& TestMonitor::getMostRecent()
+  {
+    return testMonitors.back();
+  }
+
+  TestMonitor::TestMonitor(const std::string& testName): passed(0), failed(0), testName(testName)
+  {
   }
 
   std::string TestMonitor::getTestName()
@@ -258,27 +290,40 @@ namespace tester
   void TestMonitor::report()
   {
     int tests = passed + failed;
-    if (tests == 0)
+    std::string prefix = tester::prefix.substr(0, tester::prefix.length() - 4);
+
+    std::cerr << prefix << "Test group \"" << getTestName() << "\" ended" << std::endl;
+
+    std::cerr << prefix << "Executed ";
+    if (tests > 0)
+      std::cerr << tests;
+    else
+      std::cerr << "no";
+    std::cerr << " case" << (tests == 1 ? "":"s") << " in group.";
+    if (tests > 0)
     {
-      std::cerr << "Empty test" << std::endl;
-      return;
+      std:: cerr << "Passed: " <<
+        std::fixed << std::setprecision(2) <<
+        static_cast<double>(100*passed)/tests << "% ( " << passed << " / " <<
+        tests << " )";
     }
-
-    std::cerr << "\n    Executed " << tests << " checks in test. Passed: " <<
-      std::fixed << std::setprecision(2) <<
-      static_cast<double>(100*passed)/tests << "% (" << passed << "/" <<
-      tests << ")" << std::endl;
-
-    prefix = prefix.substr(0, prefix.length() - 4);
-
     std::cerr << std::endl;
-    std::cerr << "END TEST \"" << getTestName() << "\"\n" << std::endl;
+
   }
 
-  void TestMonitor::addTest(bool passed)
+  void TestMonitor::addCase(bool passed)
   {
-    this->passed += passed;
-    this->failed += !passed;
+    for (std::list<TestMonitor>::iterator it = testMonitors.begin(); it != testMonitors.end(); ++it)
+    {
+      it->passed += passed;
+      it->failed += !passed;
+    }
+    overallyFailed += !passed;
+  }
+
+  bool TestMonitor::anyTestFailed()
+  {
+    return overallyFailed;
   }
 
   // }}}
@@ -304,14 +349,15 @@ namespace tester
   {
     prefix = prefix.substr(0, prefix.length() - 4);
 
-    std::cout << std::endl;
     if (failed == 0)
-      std::cerr << prefix << "TC PASSED \"" << getCaseName() << "\"\n" << std::endl;
+      std::cerr << prefix << "Case \"" << getCaseName() << "\" passed" << std::endl;
     else
-      std::cerr << prefix << "TC FAILED \"" << getCaseName() << "\"\n" << std::endl;
+      std::cerr << prefix << "Case \"" << getCaseName() << "\" FAILED" << std::endl;
+
+    TestMonitor::getMostRecent().addCase(failed == 0);
   }
 
-  void CaseMonitor::addTest(bool passed)
+  void CaseMonitor::addCheck(bool passed)
   {
     this->failed += !passed;
   }
@@ -401,6 +447,7 @@ namespace tester
   class TimeTester
   {
   public:
+    TimeTester() {}
     TimeTester(std::string name);
 
     void start();
@@ -413,6 +460,8 @@ namespace tester
     std::string name;
 
   };
+
+  std::map<std::string, TimeTester> timeTesters;
 
   TimeTester::TimeTester(std::string name): name(name) { }
 
@@ -443,7 +492,14 @@ namespace tester
 
   void TimeTester::report()
   {
-    std::cout << "Timer \"" << name << "\": " << diff.tv_sec << "s ";
+    std::cout << "Timer ";
+    if (name != "")
+    {
+      std::cerr << "\"" << name << "\"";
+    }
+    std::cout << " result";
+    std::cerr << ": ";
+    std::cout << diff.tv_sec << "s ";
     long res = diff.tv_nsec;
     int nsec = res % 1000;
     res /= 1000;
@@ -459,13 +515,24 @@ namespace tester
       << std::setw(3) << std::setfill('0') << msec
       << std::setw(3) << std::setfill('0') << usec
       << std::setw(3) << std::setfill('0') << nsec;
-    std::cout << "s )\n";
+    std::cout << "s )";
     std::cerr << std::endl;
     std::cout.fill(' ');
   }
 
+  // }}}
+  // ----------------------------------------
+  // Utils
+  // ----------------------------------------
+  // {{{
+
+  bool almostEqual(double d1, double d2, double eps=1e-8)
+  {
+    return fabs(d1 - d2) < eps;
+  }
+
 }
-  
+
   // }}}
   // ----------------------------------------
   // Macros
@@ -474,24 +541,38 @@ namespace tester
 
 #define CHECK(expr) tester::Evaluer(#expr, __FILE__, __LINE__) << expr;
 
-#define TEST(name) std::cerr << "\n" << "Begin test \"" << #name << "\" ("  << __FILE__ << ":" << __LINE__ << ")\n" << std::endl;\
-  tester::test_monitor.init(#name);\
+#define TEST_GROUP_BEGIN(name) std::cerr << tester::prefix << "Starting test group \"" << name << "\" ("  << __FILE__ << ":" << __LINE__ << ")" << std::endl;\
+  tester::TestMonitor::addMonitor(name);
 
-#define END_TEST  tester::test_monitor.report();
+#define TEST_GROUP_END() tester::TestMonitor::getMostRecent().report();\
+  tester::TestMonitor::removeMonitor();
 
-#define TEST_CASE(name) std::cerr << tester::prefix << "TC \"" << #name << "\" ("  << __FILE__ << ":" << __LINE__ << ")\n" << std::endl;\
-  tester::case_monitor.init(#name);
+#define TEST_CASE_BEGIN(name) std::cout << tester::prefix << "Test case \"" << name << "\" ("  << __FILE__ << ":" << __LINE__ << ")" << std::endl;\
+  tester::case_monitor.init(name);
 
-#define END_CASE tester::case_monitor.report();
+#define TEST_CASE_END() tester::case_monitor.report();
 
-#define START_TIMER(name) std::cout << "\n" << "Starting timer \"" << #name << "\" (" << __FILE__ << ":" << __LINE__ << ")\n" << std::endl;\
-  tester::TimeTester time_tester_##name(#name);\
-  time_tester_##name.start();
+#define TEST_GROUP(fun) std::cout << tester::prefix << "Running test group \"" << #fun << "\" ("  << __FILE__ << ":" << __LINE__ << ")" << std::endl;\
+  tester::TestMonitor::addMonitor(#fun);\
+  fun();\
+  tester::TestMonitor::getMostRecent().report();\
+  tester::TestMonitor::removeMonitor();
 
-#define STOP_TIMER(name) time_tester_##name.stop();\
-  std::cout << "Stopping timer \"" << #name << "\"\n" << std::endl;\
+#define TEST_CASE(fun) std::cout << tester::prefix << "Running test case \"" << #fun << "\" ("  << __FILE__ << ":" << __LINE__ << ")" << std::endl;\
+  tester::case_monitor.init(#fun);\
+  fun();\
+  tester::case_monitor.report();
 
-#define REPORT_TIMER(name) time_tester_##name.report();
+#define TEST_RESULT tester::TestMonitor::anyTestFailed();
+
+#define START_TIMER(name) std::cout << "Starting timer \"" << name << "\" (" << __FILE__ << ":" << __LINE__ << ")" << std::endl;\
+  tester::timeTesters[name] = tester::TimeTester(name);\
+  tester::timeTesters[name].start();
+
+#define STOP_TIMER(name) tester::timeTesters[name].stop();\
+  std::cout << "Stopping timer \"" << name << "\"" << std::endl;\
+
+#define REPORT_TIMER(name) tester::timeTesters[name].report();
 
   // }}}
 
