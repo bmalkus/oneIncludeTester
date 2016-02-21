@@ -9,6 +9,7 @@
 #include <list>
 #include <time.h>
 #include <algorithm>
+#include <cmath>
 
 #pragma clang diagnostic ignored "-Woverloaded-shift-op-parentheses"
 
@@ -122,25 +123,36 @@ namespace tester
   // ----------------------------------------
   // {{{
 
+  class TestCase;
+
   class TestMonitor {
   public:
     std::string getTestName();
-    void report();
+    void reportBegin();
+    void reportEnd();
 
-    static void addMonitor(const std::string& testName);
+    static void pushMonitor(const std::string& testName, const std::string& file, int line);
+    static void popSAMonitor();
+    static void popAndDeleteMonitor();
+
+    static void registerSATestCase(TestCase *ptc);
+
     static bool anyTestFailed();
-    static void removeMonitor();
-    static void addCase(bool passed);
+    static void testCaseResult(bool passed);
+    static void SATestCaseResult(bool passed);
+    static void runAllTests();
     static TestMonitor& getMostRecent();
 
   private:
     static int overallyFailed;
-    static std::list<TestMonitor> testMonitors;
+    static std::list<TestMonitor*> currentMonitors;
+    static std::list<std::pair<TestCase*, std::list<TestMonitor*>>> monitorsForCase;
 
-    TestMonitor(const std::string& testName);
+    TestMonitor(const std::string& testName, const std::string& file, int line);
 
     int passed, failed;
-    std::string testName;
+    std::string testName, file;
+    int line;
   };
 
   // }}}
@@ -151,19 +163,23 @@ namespace tester
 
   class CaseMonitor {
   public:
-    CaseMonitor(): failed(0) { }
-
-    void init(std::string caseName);
-    std::string getCaseName();
+    void init(std::string caseName, std::string file, int line);
     void report();
     void addCheck(bool passed);
+    bool passed();
+
+    static CaseMonitor& onlyInstance();
+
+    CaseMonitor(CaseMonitor& nd) = delete;
+    void operator=(CaseMonitor& nd) = delete;
 
   private:
     std::string caseName;
     int failed;
-  };
 
-  CaseMonitor case_monitor;
+    CaseMonitor(): failed(0) { }
+
+  };
 
   // }}}
   // ----------------------------------------
@@ -227,7 +243,7 @@ namespace tester
 
   void assertCommonPart(std::ostream &out, bool passed, Evaluer &evaluer)
   {
-    case_monitor.addCheck(passed);
+    CaseMonitor::onlyInstance().addCheck(passed);
     std::string note = passed ? "Passed check" : "FAILED check";
     out << prefix << note << " (" <<  evaluer.getFilename() << ":" << evaluer.getLineNo() << ") "<< std::endl;
     std::cout << prefix << "    " << evaluer.getExpr()  << std::endl;
@@ -256,29 +272,96 @@ namespace tester
   // ----------------------------------------
   // {{{
 
-  int TestMonitor::overallyFailed = 0;
-  std::list<TestMonitor> TestMonitor::testMonitors;
-
-  void TestMonitor::addMonitor(const std::string& testName)
+  class TestCase
   {
-    testMonitors.push_back(TestMonitor(testName));
-    
-    prefix += "    ";
+  public:
+    bool run();
+  protected:
+    TestCase(std::string name, std::string file, int line): name(name), file(file), line(line) { }
+  private:
+    std::string name, file;
+    int line;
+    virtual void _run() = 0;
+  };
+
+  int TestMonitor::overallyFailed = 0;
+  std::list<TestMonitor*> TestMonitor::currentMonitors;
+  std::list<std::pair<TestCase*, std::list<TestMonitor*>>> TestMonitor::monitorsForCase;
+
+  void TestMonitor::pushMonitor(const std::string& testName, const std::string& file, int line)
+  {
+    currentMonitors.push_back(new TestMonitor(testName, file, line));
   }
 
-  void TestMonitor::removeMonitor()
+  void TestMonitor::registerSATestCase(TestCase *ptc)
   {
-    testMonitors.pop_back();
+    monitorsForCase.push_back(std::pair<TestCase*, std::list<TestMonitor*>>(ptc, currentMonitors));
+  }
 
-    prefix = prefix.substr(0, prefix.length() - 4);
+  void TestMonitor::popSAMonitor()
+  {
+    currentMonitors.pop_back();
+  }
+
+  void TestMonitor::popAndDeleteMonitor()
+  {
+    delete currentMonitors.back();
+    currentMonitors.pop_back();
   }
 
   TestMonitor& TestMonitor::getMostRecent()
   {
-    return testMonitors.back();
+    return *currentMonitors.back();
   }
 
-  TestMonitor::TestMonitor(const std::string& testName): passed(0), failed(0), testName(testName)
+  void TestMonitor::runAllTests()
+  {
+    if (monitorsForCase.empty())
+    {
+      std::cerr << "No cases to run" << std::endl;
+      return;
+    }
+    auto monitorsToReport = monitorsForCase.begin()->second;
+    for (auto it = monitorsToReport.begin(); it != monitorsToReport.end(); ++it)
+    {
+      (*it)->reportBegin();
+    }
+    for (auto st = monitorsForCase.begin(); st != monitorsForCase.end(); ++st)
+    {
+      bool passed = st->first->run();
+      for (auto it = st->second.begin(); it != st->second.end(); ++it)
+      {
+        (*it)->passed += passed;
+        (*it)->failed += !passed;
+      }
+      auto nd = std::next(st, 1);
+      if (nd == monitorsForCase.end())
+        break;
+
+      auto it1 = st->second.begin();
+      auto it2 = nd->second.begin();
+      while (*it1 == *it2)
+      {
+        ++it1;
+        ++it2;
+      }
+      for(auto back_it1 = st->second.end(); back_it1-- != it1; )
+      {
+        (*back_it1)->reportEnd();
+        delete *back_it1;
+      }
+      for( ; it2 != nd->second.end(); ++it2)
+        (*it2)->reportBegin();
+    }
+    auto last = std::prev(monitorsForCase.end());
+    for(auto it = last->second.end(); it-- != last->second.begin(); )
+    {
+      (*it)->reportEnd();
+      delete *it;
+    }
+  }
+
+  TestMonitor::TestMonitor(const std::string& testName, const std::string& file, int line): passed(0), failed(0), testName(testName), file(file), line(line)
   {
   }
 
@@ -287,10 +370,16 @@ namespace tester
     return testName;
   }
 
-  void TestMonitor::report()
+  void TestMonitor::reportBegin()
+  {
+    std::cerr << tester::prefix << "Starting test group \"" << testName << "\" ("  << file << ":" << line << ")" << std::endl;
+    prefix += "    ";
+  }
+
+  void TestMonitor::reportEnd()
   {
     int tests = passed + failed;
-    std::string prefix = tester::prefix.substr(0, tester::prefix.length() - 4);
+    prefix = prefix.substr(0, prefix.length() - 4);
 
     std::cerr << prefix << "Test group \"" << getTestName() << "\" ended" << std::endl;
 
@@ -302,22 +391,27 @@ namespace tester
     std::cerr << " case" << (tests == 1 ? "":"s") << " in group.";
     if (tests > 0)
     {
-      std:: cerr << "Passed: " <<
+      std:: cerr << " Passed: " <<
         std::fixed << std::setprecision(2) <<
         static_cast<double>(100*passed)/tests << "% ( " << passed << " / " <<
         tests << " )";
     }
     std::cerr << std::endl;
-
   }
 
-  void TestMonitor::addCase(bool passed)
+  void TestMonitor::testCaseResult(bool passed)
   {
-    for (std::list<TestMonitor>::iterator it = testMonitors.begin(); it != testMonitors.end(); ++it)
+    for (auto it = currentMonitors.begin(); it != currentMonitors.end(); ++it)
     {
-      it->passed += passed;
-      it->failed += !passed;
+      TestMonitor *ptr = *it;
+      ptr->passed += passed;
+      ptr->failed += !passed;
     }
+    overallyFailed += !passed;
+  }
+
+  void TestMonitor::SATestCaseResult(bool passed)
+  {
     overallyFailed += !passed;
   }
 
@@ -332,17 +426,13 @@ namespace tester
   // ----------------------------------------
   // {{{
 
-  void CaseMonitor::init(std::string caseName)
+  void CaseMonitor::init(std::string caseName, std::string file, int line)
   {
     this->caseName = caseName;
     failed = 0;
 
+    std::cout << prefix << "Test case \"" << caseName << "\" ("  << file << ":" << line << ")" << std::endl;
     prefix += "    ";
-  }
-
-  std::string CaseMonitor::getCaseName()
-  {
-    return caseName;
   }
 
   void CaseMonitor::report()
@@ -350,11 +440,9 @@ namespace tester
     prefix = prefix.substr(0, prefix.length() - 4);
 
     if (failed == 0)
-      std::cerr << prefix << "Case \"" << getCaseName() << "\" passed" << std::endl;
+      std::cerr << prefix << "Case \"" << caseName << "\" passed" << std::endl;
     else
-      std::cerr << prefix << "Case \"" << getCaseName() << "\" FAILED" << std::endl;
-
-    TestMonitor::getMostRecent().addCase(failed == 0);
+      std::cerr << prefix << "Case \"" << caseName << "\" FAILED" << std::endl;
   }
 
   void CaseMonitor::addCheck(bool passed)
@@ -362,7 +450,16 @@ namespace tester
     this->failed += !passed;
   }
 
+  bool CaseMonitor::passed()
+  {
+    return failed == 0;
+  }
 
+  CaseMonitor& CaseMonitor::onlyInstance()
+  {
+    static CaseMonitor onlyInstance;
+    return onlyInstance;
+  }
 
   // }}}
   // ----------------------------------------
@@ -531,6 +628,14 @@ namespace tester
     return fabs(d1 - d2) < eps;
   }
 
+  bool TestCase::run()
+  {
+    CaseMonitor::onlyInstance().init(name, file, line);
+    _run();
+    CaseMonitor::onlyInstance().report();
+    return CaseMonitor::onlyInstance().passed();
+  }
+
 }
 
   // }}}
@@ -541,27 +646,58 @@ namespace tester
 
 #define CHECK(expr) tester::Evaluer(#expr, __FILE__, __LINE__) << expr;
 
-#define TEST_GROUP_BEGIN(name) std::cerr << tester::prefix << "Starting test group \"" << name << "\" ("  << __FILE__ << ":" << __LINE__ << ")" << std::endl;\
-  tester::TestMonitor::addMonitor(name);
+#define TEST_GROUP_BEGIN(name) tester::TestMonitor::pushMonitor(name, __FILE__, __LINE__); \
+  tester::TestMonitor::getMostRecent().reportBegin();
 
-#define TEST_GROUP_END() tester::TestMonitor::getMostRecent().report();\
-  tester::TestMonitor::removeMonitor();
+#define TEST_GROUP_END() tester::TestMonitor::getMostRecent().reportEnd();\
+  tester::TestMonitor::popAndDeleteMonitor();
 
-#define TEST_CASE_BEGIN(name) std::cout << tester::prefix << "Test case \"" << name << "\" ("  << __FILE__ << ":" << __LINE__ << ")" << std::endl;\
-  tester::case_monitor.init(name);
+#define TEST_CASE_BEGIN(name) tester::CaseMonitor::onlyInstance().init(name, __FILE__, __LINE__);
 
-#define TEST_CASE_END() tester::case_monitor.report();
+#define TEST_CASE_END() tester::TestMonitor::testCaseResult(tester::CaseMonitor::onlyInstance().passed()); \
+  tester::CaseMonitor::onlyInstance().report();
 
-#define TEST_GROUP(fun) std::cout << tester::prefix << "Running test group \"" << #fun << "\" ("  << __FILE__ << ":" << __LINE__ << ")" << std::endl;\
-  tester::TestMonitor::addMonitor(#fun);\
+#define TEST_GROUP(fun) tester::TestMonitor::pushMonitor(#fun, __FILE__, __LINE__); \
+  tester::TestMonitor::getMostRecent().reportBegin(); \
+  fun(); \
+  tester::TestMonitor::getMostRecent().reportEnd(); \
+  tester::TestMonitor::popAndDeleteMonitor();
+
+#define CONCAT_(x, y) x##y
+#define CONCAT(x, y) CONCAT_(x, y)
+
+#define SA_TEST_GROUP_BEGIN(name) struct CONCAT(__test_group_, __LINE__) \
+{ \
+  CONCAT(__test_group_, __LINE__)() { tester::TestMonitor::pushMonitor(name, __FILE__, __LINE__); } \
+}; \
+CONCAT(__test_group_, __LINE__) CONCAT(_tg_, __LINE__);
+
+
+#define SA_TEST_GROUP_END() struct CONCAT(__test_group_, __LINE__) \
+{ \
+  CONCAT(__test_group_, __LINE__)() { tester::TestMonitor::popSAMonitor(); } \
+}; \
+CONCAT(__test_group_, __LINE__) CONCAT(_tg_, __LINE__);
+
+
+#define SA_TEST_CASE(name) class CONCAT(__test_case_, __LINE__) : tester::TestCase \
+    { \
+    public: \
+      CONCAT(__test_case_, __LINE__)(std::string tc_name, std::string file, int line): TestCase(tc_name, file, line) { tester::TestMonitor::registerSATestCase(this); } \
+    private: \
+      void _run(); \
+    }; \
+ \
+CONCAT(__test_case_, __LINE__) CONCAT(_tc_, __LINE__)(name, __FILE__, __LINE__); \
+ \
+void CONCAT(__test_case_, __LINE__)::_run()
+
+#define PRINT(str) std::cout << str << std::endl;
+
+#define TEST_CASE(fun) tester::CaseMonitor::onlyInstance().init(#fun, __FILE__, __LINE__);\
   fun();\
-  tester::TestMonitor::getMostRecent().report();\
-  tester::TestMonitor::removeMonitor();
-
-#define TEST_CASE(fun) std::cout << tester::prefix << "Running test case \"" << #fun << "\" ("  << __FILE__ << ":" << __LINE__ << ")" << std::endl;\
-  tester::case_monitor.init(#fun);\
-  fun();\
-  tester::case_monitor.report();
+  tester::TestMonitor::testCaseResult(tester::CaseMonitor::onlyInstance().passed()); \
+  tester::CaseMonitor::onlyInstance().report();
 
 #define TEST_RESULT tester::TestMonitor::anyTestFailed();
 
@@ -573,6 +709,12 @@ namespace tester
   std::cout << "Stopping timer \"" << name << "\"" << std::endl;\
 
 #define REPORT_TIMER(name) tester::timeTesters[name].report();
+
+#define MAIN_RUN_ALL_TESTS() int main() \
+{ \
+  tester::TestMonitor::runAllTests(); \
+  return tester::TestMonitor::anyTestFailed(); \
+}
 
   // }}}
 
