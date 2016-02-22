@@ -263,7 +263,7 @@ namespace tester
   {
     std::ostream& out = val ? std::cout : std::cerr;
     assertCommonPart(out, val, evaluer);
-    std::cout << prefix << std::string(4, ' ') << std::boolalpha << "    " << val << std::endl;
+    out << prefix << std::string(4, ' ') << std::boolalpha << "    " << val << std::endl;
   }
 
   // }}}
@@ -329,6 +329,7 @@ namespace tester
     for (auto st = monitorsForCase.begin(); st != monitorsForCase.end(); ++st)
     {
       bool passed = st->first->run();
+      TestMonitor::SATestCaseResult(passed);
       for (auto it = st->second.begin(); it != st->second.end(); ++it)
       {
         (*it)->passed += passed;
@@ -340,7 +341,7 @@ namespace tester
 
       auto it1 = st->second.begin();
       auto it2 = nd->second.begin();
-      while (*it1 == *it2)
+      while (it1 != st->second.end() && it2 != nd->second.end() && *it1 == *it2)
       {
         ++it1;
         ++it2;
@@ -372,7 +373,7 @@ namespace tester
 
   void TestMonitor::reportBegin()
   {
-    std::cerr << tester::prefix << "Starting test group \"" << testName << "\" ("  << file << ":" << line << ")" << std::endl;
+    std::cout << tester::prefix << "\"" << testName << "\" - group starting ("  << file << ":" << line << ")" << std::endl;
     prefix += "    ";
   }
 
@@ -381,20 +382,15 @@ namespace tester
     int tests = passed + failed;
     prefix = prefix.substr(0, prefix.length() - 4);
 
-    std::cerr << prefix << "Test group \"" << getTestName() << "\" ended" << std::endl;
+    std::cerr << prefix << "\"" << getTestName() << "\"";
 
-    std::cerr << prefix << "Executed ";
-    if (tests > 0)
-      std::cerr << tests;
+    if (tests == 0)
+      std::cerr << " - no cases";
     else
-      std::cerr << "no";
-    std::cerr << " case" << (tests == 1 ? "":"s") << " in group.";
-    if (tests > 0)
     {
-      std:: cerr << " Passed: " <<
-        std::fixed << std::setprecision(2) <<
-        static_cast<double>(100*passed)/tests << "% ( " << passed << " / " <<
-        tests << " )";
+      std:: cerr << " - passed: "
+        << static_cast<double>(100*passed)/tests << "% ( " << passed << " / "
+        << tests << " case" << (tests == 1 ? " )":"s )");
     }
     std::cerr << std::endl;
   }
@@ -431,7 +427,7 @@ namespace tester
     this->caseName = caseName;
     failed = 0;
 
-    std::cout << prefix << "Test case \"" << caseName << "\" ("  << file << ":" << line << ")" << std::endl;
+    std::cout << prefix << "\"" << caseName << "\" - case starting ("  << file << ":" << line << ")" << std::endl;
     prefix += "    ";
   }
 
@@ -440,9 +436,9 @@ namespace tester
     prefix = prefix.substr(0, prefix.length() - 4);
 
     if (failed == 0)
-      std::cerr << prefix << "Case \"" << caseName << "\" passed" << std::endl;
+      std::cerr << prefix << "\"" << caseName << "\" - passed" << std::endl;
     else
-      std::cerr << prefix << "Case \"" << caseName << "\" FAILED" << std::endl;
+      std::cerr << prefix << "\"" << caseName << "\" - FAILED" << std::endl;
   }
 
   void CaseMonitor::addCheck(bool passed)
@@ -692,7 +688,7 @@ CONCAT(__test_case_, __LINE__) CONCAT(_tc_, __LINE__)(name, __FILE__, __LINE__);
  \
 void CONCAT(__test_case_, __LINE__)::_run()
 
-#define PRINT(str) std::cout << str << std::endl;
+#define PRINT(str) std::cout << tester::prefix << "--- " << str << " ---" << std::endl;
 
 #define TEST_CASE(fun) tester::CaseMonitor::onlyInstance().init(#fun, __FILE__, __LINE__);\
   fun();\
@@ -713,7 +709,7 @@ void CONCAT(__test_case_, __LINE__)::_run()
 #define MAIN_RUN_ALL_TESTS() int main() \
 { \
   tester::TestMonitor::runAllTests(); \
-  return tester::TestMonitor::anyTestFailed(); \
+  return TEST_RESULT; \
 }
 
   // }}}
