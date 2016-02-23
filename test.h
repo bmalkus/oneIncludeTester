@@ -5,6 +5,7 @@
 #include <sstream>
 #include <iostream>
 #include <iomanip>
+#include <iterator>
 #include <map>
 #include <list>
 #include <time.h>
@@ -142,13 +143,14 @@ namespace tester
     static bool anyTestFailed();
     static void testCaseResult(bool passed);
     static void SATestCaseResult(bool passed);
-    static void runAllTests();
+    static void filterTests(std::vector<std::string> groupsToRun);
+    static void runTests();
     static TestMonitor& getMostRecent();
 
   private:
     static int overallyFailed;
-    static std::list<TestMonitor*> currentMonitors;
-    static std::list<std::pair<TestCase*, std::list<TestMonitor*>>> monitorsForCase;
+    static std::vector<TestMonitor*> currentMonitors;
+    static std::vector<std::pair<TestCase*, std::vector<TestMonitor*>>> casesWithMonitors;
 
     TestMonitor(const std::string& testName, const std::string& file, int line);
 
@@ -252,11 +254,9 @@ namespace tester
     if (!passed)
       out << prefix << "at " << evaluer.getFilename() << ":" << evaluer.getLineNo() << ":" << std::endl;
     pref << prefix << "CHECK(" << evaluer.getExpr()  << ")";
-    // out << prefix << note;
     suff << (passed ? "  passed" : "  FAILED");
     int fillLen = WIDTH - pref.str().length() - suff.str().length();
     out << pref.str() << std::string(std::max(fillLen, 0), '.') << suff.str() << std::endl;
-    // out << prefix << "Evaluated:" << std::endl;
     out << prefix << "     / ";
   }
 
@@ -266,7 +266,6 @@ namespace tester
     {
       std::ostream& out = val ? std::cout : std::cerr;
       assertCommonPart(out, val, evaluer);
-      // out << prefix << std::string(4, ' ') <<  Checker::Dummy<U>::repr(leftValue) << " " << op << " " << Checker::Dummy<U>::repr(rightValue) << std::endl;
       out <<  Checker::Dummy<U>::repr(leftValue) << " " << op << " " << Checker::Dummy<U>::repr(rightValue) << " /" << std::endl;
     }
 
@@ -296,8 +295,8 @@ namespace tester
   };
 
   int TestMonitor::overallyFailed = 0;
-  std::list<TestMonitor*> TestMonitor::currentMonitors;
-  std::list<std::pair<TestCase*, std::list<TestMonitor*>>> TestMonitor::monitorsForCase;
+  std::vector<TestMonitor*> TestMonitor::currentMonitors;
+  std::vector<std::pair<TestCase*, std::vector<TestMonitor*>>> TestMonitor::casesWithMonitors;
 
   void TestMonitor::pushMonitor(const std::string& testName, const std::string& file, int line)
   {
@@ -306,7 +305,7 @@ namespace tester
 
   void TestMonitor::registerSATestCase(TestCase *ptc)
   {
-    monitorsForCase.push_back(std::pair<TestCase*, std::list<TestMonitor*>>(ptc, currentMonitors));
+    casesWithMonitors.push_back(decltype(casesWithMonitors)::value_type(ptc, currentMonitors));
   }
 
   void TestMonitor::popSAMonitor()
@@ -325,51 +324,86 @@ namespace tester
     return *currentMonitors.back();
   }
 
-  void TestMonitor::runAllTests()
+  void TestMonitor::filterTests(std::vector<std::string> groupsToRun)
   {
-    if (monitorsForCase.empty())
+    decltype(casesWithMonitors) filtered;
+    auto monitorInGroupsToRun = [&groupsToRun] (TestMonitor *monitor)
+    {
+      return std::find(groupsToRun.begin(), groupsToRun.end(), monitor->testName) != groupsToRun.end();
+    };
+    std::copy_if(
+        casesWithMonitors.begin(),
+        casesWithMonitors.end(),
+        std::back_inserter(filtered),
+        [&groupsToRun, &monitorInGroupsToRun] (decltype(casesWithMonitors)::value_type &elem)
+        {
+          auto &monitors = elem.second;
+          return std::any_of(monitors.begin(), monitors.end(), monitorInGroupsToRun);
+        });
+
+    // with below 'for' only listed groups and their children are output
+    // when it's commented, parent groups will be included in output too
+    for (auto &CMPair : filtered)
+    {
+      auto monitorsList = decltype(CMPair.second)(CMPair.second);
+      auto firstToCopy = std::find_if(
+          monitorsList.begin(),
+          monitorsList.end(),
+          monitorInGroupsToRun
+          );
+      CMPair.second.clear();
+      CMPair.second.assign(firstToCopy, monitorsList.end());
+    }
+
+    casesWithMonitors.clear();
+    casesWithMonitors.assign(filtered.begin(), filtered.end());
+  }
+
+  void TestMonitor::runTests()
+  {
+    if (casesWithMonitors.empty())
     {
       std::cerr << "No cases to run" << std::endl;
       return;
     }
-    auto monitorsToReport = monitorsForCase.begin()->second;
-    for (auto it = monitorsToReport.begin(); it != monitorsToReport.end(); ++it)
+    auto &monitorsToReport = casesWithMonitors.begin()->second;
+    for (TestMonitor *monitor : monitorsToReport)
     {
-      (*it)->reportBegin();
+      monitor->reportBegin();
     }
-    for (auto st = monitorsForCase.begin(); st != monitorsForCase.end(); ++st)
+    for (auto stCMPairIt = casesWithMonitors.begin(); stCMPairIt != casesWithMonitors.end(); ++stCMPairIt)
     {
-      bool passed = st->first->run();
+      bool passed = stCMPairIt->first->run();
       TestMonitor::SATestCaseResult(passed);
-      for (auto it = st->second.begin(); it != st->second.end(); ++it)
+      for (auto monitor : stCMPairIt->second)
       {
-        (*it)->passed += passed;
-        (*it)->failed += !passed;
+        monitor->passed += passed;
+        monitor->failed += !passed;
       }
-      auto nd = std::next(st, 1);
-      if (nd == monitorsForCase.end())
+      auto ndCMPairIt = std::next(stCMPairIt, 1);
+      if (ndCMPairIt == casesWithMonitors.end())
         break;
 
-      auto it1 = st->second.begin();
-      auto it2 = nd->second.begin();
-      while (it1 != st->second.end() && it2 != nd->second.end() && *it1 == *it2)
+      auto stMonitorsIt = stCMPairIt->second.begin();
+      auto ndMonitorsIt = ndCMPairIt->second.begin();
+      while (stMonitorsIt != stCMPairIt->second.end() && ndMonitorsIt != ndCMPairIt->second.end() && *stMonitorsIt == *ndMonitorsIt)
       {
-        ++it1;
-        ++it2;
+        ++stMonitorsIt;
+        ++ndMonitorsIt;
       }
-      for(auto back_it1 = st->second.end(); back_it1-- != it1; )
+      for(auto back_it1 = stCMPairIt->second.end(); back_it1-- != stMonitorsIt; )
       {
         (*back_it1)->reportEnd();
         delete *back_it1;
       }
-      for( ; it2 != nd->second.end(); ++it2)
-        (*it2)->reportBegin();
+      for( ; ndMonitorsIt != ndCMPairIt->second.end(); ++ndMonitorsIt)
+        (*ndMonitorsIt)->reportBegin();
     }
-    auto last = std::prev(monitorsForCase.end());
-    for(auto it = last->second.end(); it-- != last->second.begin(); )
+    auto last = std::prev(casesWithMonitors.end());
+    for(auto monitorsIt = last->second.end(); monitorsIt-- != last->second.begin(); )
     {
-      (*it)->reportEnd();
-      delete *it;
+      (*monitorsIt)->reportEnd();
+      delete *monitorsIt;
     }
   }
 
@@ -385,7 +419,6 @@ namespace tester
   void TestMonitor::reportBegin()
   {
     std::cerr << tester::prefix << "\"" << testName << "\" - group starting";
-    std::cout << "("  << file << ":" << line << ")";
     std::cerr << std::endl;
     prefix += "    ";
   }
@@ -404,7 +437,6 @@ namespace tester
     {
       suff << "  passed: "
         << static_cast<double>(100*passed)/tests << "% ( " << passed << " / "
-        // << tests << " case" << (tests == 1 ? " )":"s )");
         << tests << " )";
     }
     std::cerr << pref.str() << std::string(WIDTH - pref.str().length() - suff.str().length(), '.') << suff.str() << std::endl;
@@ -729,12 +761,17 @@ void CONCAT(__test_case_, __LINE__)::_run()
 
 #define REPORT_TIMER(name) tester::timeTesters[name].report();
 
-#define MAIN_RUN_ALL_TESTS() int main() \
+#define MAIN_RUN_ALL_TESTS() int main(int argc, char **argv) \
 { \
-  tester::TestMonitor::runAllTests(); \
+  if (argc > 1) \
+  { \
+    std::vector<std::string> groups(argc - 1); \
+    groups.assign(argv + 1, argv + argc); \
+    tester::TestMonitor::filterTests(groups); \
+  } \
+  tester::TestMonitor::runTests(); \
   return TEST_RESULT; \
 }
-
   // }}}
 
 #endif
