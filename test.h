@@ -13,6 +13,8 @@
 
 #pragma clang diagnostic ignored "-Woverloaded-shift-op-parentheses"
 
+#define WIDTH 100
+
 namespace tester
 {
   template <typename T>
@@ -175,6 +177,8 @@ namespace tester
 
   private:
     std::string caseName;
+    std::string file;
+    int line;
     int failed;
 
     CaseMonitor(): failed(0) { }
@@ -244,10 +248,16 @@ namespace tester
   void assertCommonPart(std::ostream &out, bool passed, Evaluer &evaluer)
   {
     CaseMonitor::onlyInstance().addCheck(passed);
-    std::string note = passed ? "Passed check" : "FAILED check";
-    out << prefix << note << " (" <<  evaluer.getFilename() << ":" << evaluer.getLineNo() << ") "<< std::endl;
-    std::cout << prefix << "    " << evaluer.getExpr()  << std::endl;
-    out << prefix << "    Evaluated:" << std::endl;
+    std::ostringstream pref, suff;
+    if (!passed)
+      out << prefix << "at " << evaluer.getFilename() << ":" << evaluer.getLineNo() << ":" << std::endl;
+    pref << prefix << "CHECK(" << evaluer.getExpr()  << ")";
+    // out << prefix << note;
+    suff << (passed ? "  passed" : "  FAILED");
+    int fillLen = WIDTH - pref.str().length() - suff.str().length();
+    out << pref.str() << std::string(std::max(fillLen, 0), '.') << suff.str() << std::endl;
+    // out << prefix << "Evaluated:" << std::endl;
+    out << prefix << "     / ";
   }
 
   template <typename U>
@@ -256,14 +266,15 @@ namespace tester
     {
       std::ostream& out = val ? std::cout : std::cerr;
       assertCommonPart(out, val, evaluer);
-      out << prefix << std::string(8, ' ') <<  Checker::Dummy<U>::repr(leftValue) << " " << op << " " << Checker::Dummy<U>::repr(rightValue) << std::endl;
+      // out << prefix << std::string(4, ' ') <<  Checker::Dummy<U>::repr(leftValue) << " " << op << " " << Checker::Dummy<U>::repr(rightValue) << std::endl;
+      out <<  Checker::Dummy<U>::repr(leftValue) << " " << op << " " << Checker::Dummy<U>::repr(rightValue) << " /" << std::endl;
     }
 
   void LeftValue<bool>::assert (bool val)
   {
     std::ostream& out = val ? std::cout : std::cerr;
     assertCommonPart(out, val, evaluer);
-    out << prefix << std::string(4, ' ') << std::boolalpha << "    " << val << std::endl;
+    out << std::boolalpha << val << " /" << std::endl;
   }
 
   // }}}
@@ -373,7 +384,9 @@ namespace tester
 
   void TestMonitor::reportBegin()
   {
-    std::cout << tester::prefix << "\"" << testName << "\" - group starting ("  << file << ":" << line << ")" << std::endl;
+    std::cerr << tester::prefix << "\"" << testName << "\" - group starting";
+    std::cout << "("  << file << ":" << line << ")";
+    std::cerr << std::endl;
     prefix += "    ";
   }
 
@@ -381,18 +394,20 @@ namespace tester
   {
     int tests = passed + failed;
     prefix = prefix.substr(0, prefix.length() - 4);
+    std::ostringstream pref, suff;
 
-    std::cerr << prefix << "\"" << getTestName() << "\"";
+    pref << prefix << "\"" << getTestName() << "\"  ";
 
     if (tests == 0)
-      std::cerr << " - no cases";
+      suff << "  no cases";
     else
     {
-      std:: cerr << " - passed: "
+      suff << "  passed: "
         << static_cast<double>(100*passed)/tests << "% ( " << passed << " / "
-        << tests << " case" << (tests == 1 ? " )":"s )");
+        // << tests << " case" << (tests == 1 ? " )":"s )");
+        << tests << " )";
     }
-    std::cerr << std::endl;
+    std::cerr << pref.str() << std::string(WIDTH - pref.str().length() - suff.str().length(), '.') << suff.str() << std::endl;
   }
 
   void TestMonitor::testCaseResult(bool passed)
@@ -425,20 +440,28 @@ namespace tester
   void CaseMonitor::init(std::string caseName, std::string file, int line)
   {
     this->caseName = caseName;
+    this->file = file;
+    this->line = line;
     failed = 0;
 
-    std::cout << prefix << "\"" << caseName << "\" - case starting ("  << file << ":" << line << ")" << std::endl;
+    std::cout << prefix << "\"" << caseName << "\" - case starting";
+    std::cout << std::endl;
     prefix += "    ";
   }
 
   void CaseMonitor::report()
   {
     prefix = prefix.substr(0, prefix.length() - 4);
+    std::ostringstream pref, suff;
+    pref << prefix << "\"" << caseName << "\"  ";
 
     if (failed == 0)
-      std::cerr << prefix << "\"" << caseName << "\" - passed" << std::endl;
+      suff << "  case passed";
     else
-      std::cerr << prefix << "\"" << caseName << "\" - FAILED" << std::endl;
+      suff << "  case FAILED";
+    if (failed > 0)
+      std::cerr << prefix << "at " << file << ":" << line << ":" << std::endl;
+    std::cerr << pref.str() << std::string(WIDTH - pref.str().length() - suff.str().length(), '.') << suff.str() << std::endl;
   }
 
   void CaseMonitor::addCheck(bool passed)
