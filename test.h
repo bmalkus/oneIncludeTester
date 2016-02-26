@@ -14,7 +14,7 @@
 
 #define WIDTH TERM
 #define DEFAULT_EPS 1e-8
-#define DOUBLE_PRECISION 9
+#define DOUBLE_PRINT_PREC 9
 
 
 #pragma clang diagnostic ignored "-Woverloaded-shift-op-parentheses"
@@ -54,7 +54,7 @@ namespace tester
 
 #endif
 
-  const int _DOUBLE_PRECISION = DOUBLE_PRECISION + 1;
+  const int _DOUBLE_PRECISION = DOUBLE_PRINT_PREC + 1;
 
   // ----------------------------------------
   // Evaluer class
@@ -895,6 +895,8 @@ void CONCAT(__test_case_, __LINE__)::_run()
 }
 
 #undef WIDTH
+#undef DEFAULT_EPS
+#undef DOUBLE_PRINT_PREC
 
   // }}}
 
