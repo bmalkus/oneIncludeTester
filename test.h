@@ -12,9 +12,12 @@
 #include <algorithm>
 #include <cmath>
 
-#pragma clang diagnostic ignored "-Woverloaded-shift-op-parentheses"
+#define WIDTH TERM
+#define DEFAULT_EPS 1e-8
+#define DOUBLE_PRECISION 9
 
-#define WIDTH 100
+
+#pragma clang diagnostic ignored "-Woverloaded-shift-op-parentheses"
 
 namespace tester
 {
@@ -32,10 +35,36 @@ namespace tester
 
   std::string prefix;
 
+#if WIDTH == TERM
+
+#include <sys/ioctl.h>
+#include <stdio.h>
+
+  int _width_setter()
+  {
+    struct winsize w;
+    ioctl(0, TIOCGWINSZ, &w);
+    return w.ws_col;
+  }
+  const int _WIDTH = _width_setter();
+
+#else
+
+  const int _WIDTH = WIDTH;
+
+#endif
+
+  const int _DOUBLE_PRECISION = DOUBLE_PRECISION + 1;
+
   // ----------------------------------------
   // Evaluer class
   // ----------------------------------------
   // {{{
+
+  struct almost_equal_type {
+    bool res;
+    long double d1, d2, eps;
+  };
 
   class Evaluer
   {
@@ -120,6 +149,18 @@ namespace tester
       Evaluer& evaluer;
     };
 
+  template<>
+    class LeftValue<almost_equal_type>
+    {
+    public:
+      LeftValue(almost_equal_type leftValue, Evaluer& evaluer_): evaluer(evaluer_) { assert(leftValue); }
+
+      void assert(almost_equal_type val);
+
+    private:
+      Evaluer& evaluer;
+    };
+
   // }}}
   // ----------------------------------------
   // TestMonitor class
@@ -149,6 +190,7 @@ namespace tester
 
   private:
     static int overallyFailed;
+    static int overallyRun;
     static std::vector<TestMonitor*> currentMonitors;
     static std::vector<std::pair<TestCase*, std::vector<TestMonitor*>>> casesWithMonitors;
 
@@ -198,6 +240,13 @@ namespace tester
     {
       return LeftValue<T>(leftValue, *this);
     }
+
+  template <>
+    LeftValue<almost_equal_type> Evaluer::operator<< (almost_equal_type result)
+    {
+      return LeftValue<almost_equal_type>(result, *this);
+    }
+
 
   // }}}
   // ----------------------------------------
@@ -253,9 +302,9 @@ namespace tester
     std::ostringstream pref, suff;
     if (!passed)
       out << prefix << "at " << evaluer.getFilename() << ":" << evaluer.getLineNo() << ":" << std::endl;
-    pref << prefix << "CHECK(" << evaluer.getExpr()  << ")";
+    pref << prefix << "CHECK(" << evaluer.getExpr()  << ")  ";
     suff << (passed ? "  passed" : "  FAILED");
-    int fillLen = WIDTH - pref.str().length() - suff.str().length();
+    int fillLen = std::max(_WIDTH - signed(pref.str().length()) - signed(suff.str().length()), 3);
     out << pref.str() << std::string(std::max(fillLen, 0), '.') << suff.str() << std::endl;
     out << prefix << "     / ";
   }
@@ -264,16 +313,39 @@ namespace tester
   template <typename V>
     void LeftValue<U>::assert (bool val, std::string op, V rightValue)
     {
+      int prec = std::cout.precision();
+      std::cout.precision(_DOUBLE_PRECISION);
+
       std::ostream& out = val ? std::cout : std::cerr;
       assertCommonPart(out, val, evaluer);
-      out <<  Checker::Dummy<U>::repr(leftValue) << " " << op << " " << Checker::Dummy<U>::repr(rightValue) << " /" << std::endl;
+      out << Checker::Dummy<U>::repr(leftValue) << " " << op << " " << Checker::Dummy<V>::repr(rightValue) << " /" << std::endl;
+
+      std::cout.precision(prec);
     }
 
   void LeftValue<bool>::assert (bool val)
   {
+    int prec = std::cout.precision();
+    std::cout.precision(_DOUBLE_PRECISION);
+
     std::ostream& out = val ? std::cout : std::cerr;
     assertCommonPart(out, val, evaluer);
     out << std::boolalpha << val << " /" << std::endl;
+
+    std::cout.precision(prec);
+  }
+
+  void LeftValue<almost_equal_type>::assert (almost_equal_type res)
+  {
+    int prec = std::cout.precision();
+    std::cout.precision(_DOUBLE_PRECISION);
+
+    bool val = res.res;
+    std::ostream& out = val ? std::cout : std::cerr;
+    assertCommonPart(out, val, evaluer);
+    out << res.d1 << " ~= " << res.d2 << " / ( +/- " << DEFAULT_EPS << " ) -> " << std::boolalpha << val << std::endl;
+
+    std::cout.precision(prec);
   }
 
   // }}}
@@ -295,6 +367,7 @@ namespace tester
   };
 
   int TestMonitor::overallyFailed = 0;
+  int TestMonitor::overallyRun = 0;
   std::vector<TestMonitor*> TestMonitor::currentMonitors;
   std::vector<std::pair<TestCase*, std::vector<TestMonitor*>>> TestMonitor::casesWithMonitors;
 
@@ -405,6 +478,12 @@ namespace tester
       (*monitorsIt)->reportEnd();
       delete *monitorsIt;
     }
+    std::cerr << std::string(std::max(_WIDTH, 0), '_') << std::endl;
+    std::ostringstream suff;
+    suff << "passed: "
+      << int(double(100*(overallyRun - overallyFailed))/overallyRun)
+      << "% ( " << (overallyRun - overallyFailed) << " / " << overallyRun << " )";
+    std::cerr << std::string(std::max(_WIDTH - signed(suff.str().length()), 0), ' ') << suff.str() << std::endl;
   }
 
   TestMonitor::TestMonitor(const std::string& testName, const std::string& file, int line): passed(0), failed(0), testName(testName), file(file), line(line)
@@ -436,10 +515,10 @@ namespace tester
     else
     {
       suff << "  passed: "
-        << static_cast<double>(100*passed)/tests << "% ( " << passed << " / "
+        << int(double(100*passed)/tests) << "% ( " << passed << " / "
         << tests << " )";
     }
-    std::cerr << pref.str() << std::string(WIDTH - pref.str().length() - suff.str().length(), '.') << suff.str() << std::endl;
+    std::cerr << pref.str() << std::string(std::max(_WIDTH - signed(pref.str().length()) - signed(suff.str().length()), 3), '.') << suff.str() << std::endl;
   }
 
   void TestMonitor::testCaseResult(bool passed)
@@ -451,11 +530,13 @@ namespace tester
       ptr->failed += !passed;
     }
     overallyFailed += !passed;
+    ++overallyRun;
   }
 
   void TestMonitor::SATestCaseResult(bool passed)
   {
     overallyFailed += !passed;
+    ++overallyRun;
   }
 
   bool TestMonitor::anyTestFailed()
@@ -493,7 +574,7 @@ namespace tester
       suff << "  case FAILED";
     if (failed > 0)
       std::cerr << prefix << "at " << file << ":" << line << ":" << std::endl;
-    std::cerr << pref.str() << std::string(WIDTH - pref.str().length() - suff.str().length(), '.') << suff.str() << std::endl;
+    std::cerr << pref.str() << std::string(std::max(_WIDTH - signed(pref.str().length()) - signed(suff.str().length()), 3), '.') << suff.str() << std::endl;
   }
 
   void CaseMonitor::addCheck(bool passed)
@@ -592,6 +673,7 @@ namespace tester
   // TimeTester class with definitions
   // ----------------------------------------
   // {{{
+
   class TimeTester
   {
   public:
@@ -601,7 +683,9 @@ namespace tester
     void start();
     void stop();
     timespec get_diff();
-    void report();
+    void prettyReport();
+    void simpleReport();
+    static void simpleReportAllTimers();
 
   private:
     timespec start_time, stop_time, diff;
@@ -638,16 +722,17 @@ namespace tester
     return diff;
   }
 
-  void TimeTester::report()
+  void TimeTester::prettyReport()
   {
-    std::cout << "Timer ";
+    std::ostringstream pref, suff;
+    pref << prefix << "Timer ";
     if (name != "")
     {
-      std::cerr << "\"" << name << "\"";
+      pref << "\"" << name << "\"";
     }
-    std::cout << " result";
-    std::cerr << ": ";
-    std::cout << diff.tv_sec << "s ";
+    pref << " result" << "  ";
+    
+    suff << "  " << diff.tv_sec << "s ";
     long res = diff.tv_nsec;
     int nsec = res % 1000;
     res /= 1000;
@@ -655,17 +740,44 @@ namespace tester
     res /= 1000;
     int msec = res % 1000;
 
-    std::cout << msec << "ms ";
-    std::cout << usec << "us ";
-    std::cout << nsec << "ns";
-    std::cout << " ( ";
+    suff << msec << "ms ";
+    suff << usec << "us ";
+    suff << nsec << "ns";
+    suff << " / ";
+    suff << diff.tv_sec << "."
+      << std::setw(3) << std::setfill('0') << msec
+      << std::setw(3) << std::setfill('0') << usec
+      << std::setw(3) << std::setfill('0') << nsec;
+    suff << "s";
+    suff << " /";
+    std::cout.fill(' ');
+
+    int fillLen = std::max(_WIDTH - signed(pref.str().length()) - signed(suff.str().length()), 3);
+    std::cerr << pref.str() << std::string(std::max(fillLen, 0), '.') << suff.str() << std::endl;
+  }
+
+  void TimeTester::simpleReport()
+  {
+    std::cerr << name << "    ";
+    long res = diff.tv_nsec;
+    int nsec = res % 1000;
+    res /= 1000;
+    int usec = res % 1000;
+    res /= 1000;
+    int msec = res % 1000;
     std::cerr << diff.tv_sec << "."
       << std::setw(3) << std::setfill('0') << msec
       << std::setw(3) << std::setfill('0') << usec
       << std::setw(3) << std::setfill('0') << nsec;
-    std::cout << "s )";
     std::cerr << std::endl;
-    std::cout.fill(' ');
+  }
+
+  void TimeTester::simpleReportAllTimers()
+  {
+    for (auto tester : timeTesters)
+    {
+      tester.second.simpleReport();
+    }
   }
 
   // }}}
@@ -674,9 +786,14 @@ namespace tester
   // ----------------------------------------
   // {{{
 
-  bool almostEqual(double d1, double d2, double eps=1e-8)
+  almost_equal_type almostEqual(long double d1, long double d2, long double eps=DEFAULT_EPS)
   {
-    return fabs(d1 - d2) < eps;
+    almost_equal_type res;
+    res.d1 = d1;
+    res.d2 = d2;
+    res.eps = eps;
+    res.res = std::abs(d1 - d2) < eps;
+    return res;
   }
 
   bool TestCase::run()
@@ -743,7 +860,7 @@ CONCAT(__test_case_, __LINE__) CONCAT(_tc_, __LINE__)(name, __FILE__, __LINE__);
  \
 void CONCAT(__test_case_, __LINE__)::_run()
 
-#define PRINT(str) std::cout << tester::prefix << "--- " << str << " ---" << std::endl;
+#define PRINT(str) std::cout << tester::prefix << "#### " << str << " ####" << std::endl;
 
 #define TEST_CASE(fun) tester::CaseMonitor::onlyInstance().init(#fun, __FILE__, __LINE__);\
   fun();\
@@ -752,14 +869,18 @@ void CONCAT(__test_case_, __LINE__)::_run()
 
 #define TEST_RESULT tester::TestMonitor::anyTestFailed();
 
-#define START_TIMER(name) std::cout << "Starting timer \"" << name << "\" (" << __FILE__ << ":" << __LINE__ << ")" << std::endl;\
+#define START_TIMER(name) std::cout << tester::prefix << "Starting timer \"" << name << "\" (" << __FILE__ << ":" << __LINE__ << ")" << std::endl;\
   tester::timeTesters[name] = tester::TimeTester(name);\
   tester::timeTesters[name].start();
 
 #define STOP_TIMER(name) tester::timeTesters[name].stop();\
-  std::cout << "Stopping timer \"" << name << "\"" << std::endl;\
+  std::cout << tester::prefix << "Stopping timer \"" << name << "\"" << std::endl;\
 
-#define REPORT_TIMER(name) tester::timeTesters[name].report();
+#define PRETTY_REPORT_TIMER(name) tester::timeTesters[name].prettyReport();
+
+#define SIMPLE_REPORT_TIMER(name) tester::timeTesters[name].simpleReport();
+
+#define SIMPLE_REPORT_ALL_TIMERS() tester::TimeTester::simpleReportAllTimers();
 
 #define MAIN_RUN_ALL_TESTS() int main(int argc, char **argv) \
 { \
@@ -772,6 +893,9 @@ void CONCAT(__test_case_, __LINE__)::_run()
   tester::TestMonitor::runTests(); \
   return TEST_RESULT; \
 }
+
+#undef WIDTH
+
   // }}}
 
 #endif
