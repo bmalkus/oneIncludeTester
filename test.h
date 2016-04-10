@@ -894,6 +894,8 @@ void CONCAT(__test_case_, __LINE__)::_run()
   return TEST_RESULT; \
 }
 
+#define DBG(str) std::cout << "#DBG /" << __FILE__ << ":" << __LINE__ << "/ " << #str << " = " << str << std::endl;
+
 #undef WIDTH
 #undef DEFAULT_EPS
 #undef DOUBLE_PRINT_PREC
