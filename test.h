@@ -896,6 +896,18 @@ void CONCAT(__test_case_, __LINE__)::_run()
 
 #define DBG(str) std::cout << "#DBG /" << __FILE__ << ":" << __LINE__ << "/ " << #str << " = " << str << std::endl;
 
+#ifdef AFFINITY_INCLUDE
+
+#define _GNU_SOURCE
+#include <sched.h>
+
+#define SET_AFFINITY(CPU) cpu_set_t set; \
+  CPU_ZERO(&set); \
+  CPU_SET(CPU, &set); \
+  sched_setaffinity(0, sizeof(set), &set);
+
+#endif
+
 #undef WIDTH
 #undef DEFAULT_EPS
 #undef DOUBLE_PRINT_PREC
