@@ -896,6 +896,14 @@ void CONCAT(__test_case_, __LINE__)::_run()
 
 #define DBG(str) std::cout << "#DBG /" << __FILE__ << ":" << __LINE__ << "/ " << #str << " = " << str << std::endl;
 
+#define SILENT(macro) { \
+  std::cout.setstate(std::ios_base::failbit); \
+  std::cerr.setstate(std::ios_base::failbit); \
+  macro; \
+  std::cout.clear(); \
+  std::cerr.clear(); \
+}
+
 #ifdef AFFINITY_INCLUDE
 
 #define _GNU_SOURCE
