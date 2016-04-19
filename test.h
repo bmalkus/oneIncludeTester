@@ -906,7 +906,9 @@ void CONCAT(__test_case_, __LINE__)::_run()
 
 #ifdef AFFINITY_INCLUDE
 
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+#endif
 #include <sched.h>
 
 #define SET_AFFINITY(CPU) cpu_set_t set; \
