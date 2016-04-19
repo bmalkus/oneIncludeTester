@@ -904,6 +904,14 @@ for (auto elem : coll) \
 } \
 std::cout << std::endl << "}" << std::endl;
 
+#define DBG_ALL_PTR(coll) std::cout << "#DBG /" << __FILE__ << ":" << __LINE__ << "/ " << #coll << " = {" << std::endl; \
+std::cout << "    "; \
+for (auto elem : coll) \
+{ \
+  std::cout << *elem << "   ";\
+} \
+std::cout << std::endl << "}" << std::endl;
+
 #define SILENT(macro) { \
   std::cout.setstate(std::ios_base::failbit); \
   std::cerr.setstate(std::ios_base::failbit); \
