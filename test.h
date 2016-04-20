@@ -16,8 +16,9 @@
 #define DEFAULT_EPS 1e-8
 #define DOUBLE_PRINT_PREC 9
 
-
+#ifdef __clang__
 #pragma clang diagnostic ignored "-Woverloaded-shift-op-parentheses"
+#endif
 
 namespace tester
 {
