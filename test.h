@@ -11,6 +11,7 @@
 #include <time.h>
 #include <algorithm>
 #include <cmath>
+#include <vector>
 
 #define WIDTH TERM
 #define DEFAULT_EPS 1e-8
