@@ -173,63 +173,168 @@ namespace tester
 
   class TestMonitor {
   public:
-    std::string getTestName();
-    void reportBegin();
-    void reportEnd();
-
-    static void pushMonitor(const std::string& testName, const std::string& file, int line);
-    static void popSAMonitor();
-    static void popAndDeleteMonitor();
-
-    static void registerSATestCase(TestCase *ptc);
+    static void registerTestCase(TestCase *ptc);
 
     static bool anyTestFailed();
-    static void testCaseResult(bool passed);
-    static void SATestCaseResult(bool passed);
-    static void filterTests(std::vector<std::string> groupsToRun);
+    static void TestCaseResult(bool passed);
     static void runTests();
-    static TestMonitor& getMostRecent();
 
   private:
     static int overallyFailed;
     static int overallyRun;
-    static std::vector<TestMonitor*> currentMonitors;
-    static std::vector<std::pair<TestCase*, std::vector<TestMonitor*>>> casesWithMonitors;
-
-    TestMonitor(const std::string& testName, const std::string& file, int line);
-
-    int passed, failed;
-    std::string testName, file;
-    int line;
+    static std::vector<TestCase*> testCases;
   };
 
   // }}}
   // ----------------------------------------
-  // CaseMonitor class
+  // TestCase class
   // ----------------------------------------
   // {{{
 
-  class CaseMonitor {
+  class TestCase
+  {
   public:
-    void init(std::string caseName, std::string file, int line);
-    void report();
-    void addCheck(bool passed);
-    bool passed();
+    static TestCase *get_current() { return current; }
 
-    static CaseMonitor& onlyInstance();
+    bool run();
+    void add_check(bool passed) { this->failed += !passed; this->passed += passed; }
+    bool add_subcase();
 
-    CaseMonitor(CaseMonitor& nd) = delete;
-    void operator=(CaseMonitor& nd) = delete;
+  protected:
+    TestCase(std::string name, std::string file, int line);
 
   private:
-    std::string caseName;
-    std::string file;
+    static TestCase *current;
+
+    std::string name, file;
+    int line;
+    int failed, passed;
+    int subcases;
+    int subcases_done;
+    int rerun;
+
+    virtual void _run() = 0;
+  };
+
+  TestCase* TestCase::current = nullptr;
+
+  bool TestCase::run()
+  {
+    std::cout << prefix << name << " - case starting";
+    std::cout << std::endl;
+    prefix += "    ";
+
+    current = this;
+
+    rerun = true;
+    while (rerun)
+    {
+      rerun = false;
+      subcases = 0;
+      this->_run();
+      subcases_done += 1;
+    }
+
+    prefix = prefix.substr(0, prefix.length() - 4);
+    std::ostringstream pref, suff;
+    pref << prefix << name << "  ";
+
+    int tests = passed + failed;
+
+    if (failed == 0)
+      suff << "  " << int(double(100*passed)/tests) << "% ( " << passed << " / "
+        << tests << " ) - passed";
+    else
+    {
+      suff << "  " << int(double(100*passed)/tests) << "% ( " << passed << " / "
+        << tests << " ) - FAILED";
+      std::cerr << prefix << "at " << file << ":" << line << ":" << std::endl;
+    }
+    std::cerr << pref.str() << std::string(std::max(_WIDTH - signed(pref.str().length()) - signed(suff.str().length()), 3), '.') << suff.str() << std::endl;
+
+    current = nullptr;
+
+    return failed == 0;
+  }
+
+  bool TestCase::add_subcase()
+  {
+    bool ret = false;
+    if (subcases_done == subcases)
+      ret = true;
+    else if (subcases_done < subcases)
+      rerun = true;
+    subcases += 1;
+    return ret;
+  }
+
+  TestCase::TestCase(std::string name, std::string file, int line):
+    name(name), file(file), line(line), failed(0), passed(0), subcases(0), subcases_done(0)
+  {
+    // empty
+  }
+
+  // }}}
+  // ----------------------------------------
+  // TestSubcase class
+  // ----------------------------------------
+  // {{{
+
+  class TestSubcase
+  {
+  public:
+    static TestSubcase *get_current() { return current; }
+
+    bool run();
+    operator bool() { return should_run; }
+    void add_check(bool passed) { this->failed += !passed; }
+
+    TestSubcase(std::string name, std::string file, int line);
+    ~TestSubcase();
+
+  private:
+    static TestSubcase *current;
+
+    std::string name, file;
     int line;
     int failed;
-
-    CaseMonitor(): failed(0) { }
-
+    bool should_run;
   };
+
+  TestSubcase* TestSubcase::current = nullptr;
+
+  TestSubcase::TestSubcase(std::string name, std::string file, int line):
+    name(name), file(file), line(line), failed(0)
+  {
+    should_run = TestCase::get_current()->add_subcase();
+    current = this;
+    if (should_run)
+    {
+      std::cout << prefix << name << " - subcase";
+      std::cout << std::endl;
+      prefix += "    ";
+    }
+  }
+
+  TestSubcase::~TestSubcase()
+  {
+    if (should_run)
+    {
+      prefix = prefix.substr(0, prefix.length() - 4);
+      std::ostringstream pref, suff;
+      pref << prefix << name << "  ";
+
+      if (failed == 0)
+        suff << "  subcase passed";
+      else
+      {
+        suff << "  subcase FAILED";
+        std::cerr << prefix << "at " << file << ":" << line << ":" << std::endl;
+      }
+      std::cerr << pref.str() << std::string(std::max(_WIDTH - signed(pref.str().length()) - signed(suff.str().length()), 3), '.') << suff.str() << std::endl;
+    }
+    current = nullptr;
+  }
 
   // }}}
   // ----------------------------------------
@@ -300,7 +405,10 @@ namespace tester
 
   void assertCommonPart(std::ostream &out, bool passed, Evaluer &evaluer)
   {
-    CaseMonitor::onlyInstance().addCheck(passed);
+    TestCase::get_current()->add_check(passed);
+    if (auto *subcase = TestSubcase::get_current())
+      subcase->add_check(passed);
+
     std::ostringstream pref, suff;
     if (!passed)
       out << prefix << "at " << evaluer.getFilename() << ":" << evaluer.getLineNo() << ":" << std::endl;
@@ -356,130 +464,28 @@ namespace tester
   // ----------------------------------------
   // {{{
 
-  class TestCase
-  {
-  public:
-    bool run();
-  protected:
-    TestCase(std::string name, std::string file, int line): name(name), file(file), line(line) { }
-  private:
-    std::string name, file;
-    int line;
-    virtual void _run() = 0;
-  };
-
   int TestMonitor::overallyFailed = 0;
   int TestMonitor::overallyRun = 0;
-  std::vector<TestMonitor*> TestMonitor::currentMonitors;
-  std::vector<std::pair<TestCase*, std::vector<TestMonitor*>>> TestMonitor::casesWithMonitors;
+  std::vector<TestCase*> TestMonitor::testCases;
 
-  void TestMonitor::pushMonitor(const std::string& testName, const std::string& file, int line)
+  void TestMonitor::registerTestCase(TestCase *ptc)
   {
-    currentMonitors.push_back(new TestMonitor(testName, file, line));
-  }
-
-  void TestMonitor::registerSATestCase(TestCase *ptc)
-  {
-    casesWithMonitors.push_back(decltype(casesWithMonitors)::value_type(ptc, currentMonitors));
-  }
-
-  void TestMonitor::popSAMonitor()
-  {
-    currentMonitors.pop_back();
-  }
-
-  void TestMonitor::popAndDeleteMonitor()
-  {
-    delete currentMonitors.back();
-    currentMonitors.pop_back();
-  }
-
-  TestMonitor& TestMonitor::getMostRecent()
-  {
-    return *currentMonitors.back();
-  }
-
-  void TestMonitor::filterTests(std::vector<std::string> groupsToRun)
-  {
-    decltype(casesWithMonitors) filtered;
-    auto monitorInGroupsToRun = [&groupsToRun] (TestMonitor *monitor)
-    {
-      return std::find(groupsToRun.begin(), groupsToRun.end(), monitor->testName) != groupsToRun.end();
-    };
-    std::copy_if(
-        casesWithMonitors.begin(),
-        casesWithMonitors.end(),
-        std::back_inserter(filtered),
-        [&groupsToRun, &monitorInGroupsToRun] (decltype(casesWithMonitors)::value_type &elem)
-        {
-          auto &monitors = elem.second;
-          return std::any_of(monitors.begin(), monitors.end(), monitorInGroupsToRun);
-        });
-
-    // with below 'for' only listed groups and their children are output
-    // when it's commented, parent groups will be included in output too
-    for (auto &CMPair : filtered)
-    {
-      auto monitorsList = decltype(CMPair.second)(CMPair.second);
-      auto firstToCopy = std::find_if(
-          monitorsList.begin(),
-          monitorsList.end(),
-          monitorInGroupsToRun
-          );
-      CMPair.second.clear();
-      CMPair.second.assign(firstToCopy, monitorsList.end());
-    }
-
-    casesWithMonitors.clear();
-    casesWithMonitors.assign(filtered.begin(), filtered.end());
+    testCases.push_back(ptc);
   }
 
   void TestMonitor::runTests()
   {
-    if (casesWithMonitors.empty())
+    if (testCases.empty())
     {
       std::cerr << "No cases to run" << std::endl;
       return;
     }
-    auto &monitorsToReport = casesWithMonitors.begin()->second;
-    for (TestMonitor *monitor : monitorsToReport)
+    for (auto tcIt = testCases.begin(); tcIt != testCases.end(); ++tcIt)
     {
-      monitor->reportBegin();
+      bool passed = (*tcIt)->run();
+      TestMonitor::TestCaseResult(passed);
     }
-    for (auto stCMPairIt = casesWithMonitors.begin(); stCMPairIt != casesWithMonitors.end(); ++stCMPairIt)
-    {
-      bool passed = stCMPairIt->first->run();
-      TestMonitor::SATestCaseResult(passed);
-      for (auto monitor : stCMPairIt->second)
-      {
-        monitor->passed += passed;
-        monitor->failed += !passed;
-      }
-      auto ndCMPairIt = std::next(stCMPairIt, 1);
-      if (ndCMPairIt == casesWithMonitors.end())
-        break;
 
-      auto stMonitorsIt = stCMPairIt->second.begin();
-      auto ndMonitorsIt = ndCMPairIt->second.begin();
-      while (stMonitorsIt != stCMPairIt->second.end() && ndMonitorsIt != ndCMPairIt->second.end() && *stMonitorsIt == *ndMonitorsIt)
-      {
-        ++stMonitorsIt;
-        ++ndMonitorsIt;
-      }
-      for(auto back_it1 = stCMPairIt->second.end(); back_it1-- != stMonitorsIt; )
-      {
-        (*back_it1)->reportEnd();
-        delete *back_it1;
-      }
-      for( ; ndMonitorsIt != ndCMPairIt->second.end(); ++ndMonitorsIt)
-        (*ndMonitorsIt)->reportBegin();
-    }
-    auto last = std::prev(casesWithMonitors.end());
-    for(auto monitorsIt = last->second.end(); monitorsIt-- != last->second.begin(); )
-    {
-      (*monitorsIt)->reportEnd();
-      delete *monitorsIt;
-    }
     std::cerr << std::string(std::max(_WIDTH, 0), '_') << std::endl;
     std::ostringstream suff;
     suff << "passed: "
@@ -488,54 +494,7 @@ namespace tester
     std::cerr << std::string(std::max(_WIDTH - signed(suff.str().length()), 0), ' ') << suff.str() << std::endl;
   }
 
-  TestMonitor::TestMonitor(const std::string& testName, const std::string& file, int line): passed(0), failed(0), testName(testName), file(file), line(line)
-  {
-  }
-
-  std::string TestMonitor::getTestName()
-  {
-    return testName;
-  }
-
-  void TestMonitor::reportBegin()
-  {
-    std::cerr << tester::prefix << "\"" << testName << "\" - group starting";
-    std::cerr << std::endl;
-    prefix += "    ";
-  }
-
-  void TestMonitor::reportEnd()
-  {
-    int tests = passed + failed;
-    prefix = prefix.substr(0, prefix.length() - 4);
-    std::ostringstream pref, suff;
-
-    pref << prefix << "\"" << getTestName() << "\"  ";
-
-    if (tests == 0)
-      suff << "  no cases";
-    else
-    {
-      suff << "  passed: "
-        << int(double(100*passed)/tests) << "% ( " << passed << " / "
-        << tests << " )";
-    }
-    std::cerr << pref.str() << std::string(std::max(_WIDTH - signed(pref.str().length()) - signed(suff.str().length()), 3), '.') << suff.str() << std::endl;
-  }
-
-  void TestMonitor::testCaseResult(bool passed)
-  {
-    for (auto it = currentMonitors.begin(); it != currentMonitors.end(); ++it)
-    {
-      TestMonitor *ptr = *it;
-      ptr->passed += passed;
-      ptr->failed += !passed;
-    }
-    overallyFailed += !passed;
-    ++overallyRun;
-  }
-
-  void TestMonitor::SATestCaseResult(bool passed)
+  void TestMonitor::TestCaseResult(bool passed)
   {
     overallyFailed += !passed;
     ++overallyRun;
@@ -544,55 +503,6 @@ namespace tester
   bool TestMonitor::anyTestFailed()
   {
     return overallyFailed;
-  }
-
-  // }}}
-  // ----------------------------------------
-  // CaseMonitor definitions
-  // ----------------------------------------
-  // {{{
-
-  void CaseMonitor::init(std::string caseName, std::string file, int line)
-  {
-    this->caseName = caseName;
-    this->file = file;
-    this->line = line;
-    failed = 0;
-
-    std::cout << prefix << "\"" << caseName << "\" - case starting";
-    std::cout << std::endl;
-    prefix += "    ";
-  }
-
-  void CaseMonitor::report()
-  {
-    prefix = prefix.substr(0, prefix.length() - 4);
-    std::ostringstream pref, suff;
-    pref << prefix << "\"" << caseName << "\"  ";
-
-    if (failed == 0)
-      suff << "  case passed";
-    else
-      suff << "  case FAILED";
-    if (failed > 0)
-      std::cerr << prefix << "at " << file << ":" << line << ":" << std::endl;
-    std::cerr << pref.str() << std::string(std::max(_WIDTH - signed(pref.str().length()) - signed(suff.str().length()), 3), '.') << suff.str() << std::endl;
-  }
-
-  void CaseMonitor::addCheck(bool passed)
-  {
-    this->failed += !passed;
-  }
-
-  bool CaseMonitor::passed()
-  {
-    return failed == 0;
-  }
-
-  CaseMonitor& CaseMonitor::onlyInstance()
-  {
-    static CaseMonitor onlyInstance;
-    return onlyInstance;
   }
 
   // }}}
@@ -798,14 +708,6 @@ namespace tester
     return res;
   }
 
-  bool TestCase::run()
-  {
-    CaseMonitor::onlyInstance().init(name, file, line);
-    _run();
-    CaseMonitor::onlyInstance().report();
-    return CaseMonitor::onlyInstance().passed();
-  }
-
 }
 
   // }}}
@@ -816,44 +718,16 @@ namespace tester
 
 #define CHECK(expr) tester::Evaluer(#expr, __FILE__, __LINE__) << expr;
 
-#define TEST_GROUP_BEGIN(name) tester::TestMonitor::pushMonitor(name, __FILE__, __LINE__); \
-  tester::TestMonitor::getMostRecent().reportBegin();
-
-#define TEST_GROUP_END() tester::TestMonitor::getMostRecent().reportEnd();\
-  tester::TestMonitor::popAndDeleteMonitor();
-
-#define TEST_CASE_BEGIN(name) tester::CaseMonitor::onlyInstance().init(name, __FILE__, __LINE__);
-
-#define TEST_CASE_END() tester::TestMonitor::testCaseResult(tester::CaseMonitor::onlyInstance().passed()); \
-  tester::CaseMonitor::onlyInstance().report();
-
-#define TEST_GROUP(fun) tester::TestMonitor::pushMonitor(#fun, __FILE__, __LINE__); \
-  tester::TestMonitor::getMostRecent().reportBegin(); \
-  fun(); \
-  tester::TestMonitor::getMostRecent().reportEnd(); \
-  tester::TestMonitor::popAndDeleteMonitor();
-
 #define CONCAT_(x, y) x##y
 #define CONCAT(x, y) CONCAT_(x, y)
 
-#define SA_TEST_GROUP_BEGIN(name) struct CONCAT(__test_group_, __LINE__) \
-{ \
-  CONCAT(__test_group_, __LINE__)() { tester::TestMonitor::pushMonitor(name, __FILE__, __LINE__); } \
-}; \
-CONCAT(__test_group_, __LINE__) CONCAT(_tg_, __LINE__);
+#define TEST_SUBCASE(name) \
+  if(tester::TestSubcase CONCAT(__test_group_, __LINE__) = tester::TestSubcase(name, __FILE__, __LINE__))
 
-
-#define SA_TEST_GROUP_END() struct CONCAT(__test_group_, __LINE__) \
-{ \
-  CONCAT(__test_group_, __LINE__)() { tester::TestMonitor::popSAMonitor(); } \
-}; \
-CONCAT(__test_group_, __LINE__) CONCAT(_tg_, __LINE__);
-
-
-#define SA_TEST_CASE(name) class CONCAT(__test_case_, __LINE__) : tester::TestCase \
+#define TEST_CASE(name) class CONCAT(__test_case_, __LINE__) : tester::TestCase \
     { \
     public: \
-      CONCAT(__test_case_, __LINE__)(std::string tc_name, std::string file, int line): TestCase(tc_name, file, line) { tester::TestMonitor::registerSATestCase(this); } \
+      CONCAT(__test_case_, __LINE__)(std::string tc_name, std::string file, int line): TestCase(tc_name, file, line) { tester::TestMonitor::registerTestCase(this); } \
     private: \
       void _run(); \
     }; \
@@ -863,11 +737,6 @@ CONCAT(__test_case_, __LINE__) CONCAT(_tc_, __LINE__)(name, __FILE__, __LINE__);
 void CONCAT(__test_case_, __LINE__)::_run()
 
 #define PRINT(str) std::cout << tester::prefix << "#### " << str << " ####" << std::endl;
-
-#define TEST_CASE(fun) tester::CaseMonitor::onlyInstance().init(#fun, __FILE__, __LINE__);\
-  fun();\
-  tester::TestMonitor::testCaseResult(tester::CaseMonitor::onlyInstance().passed()); \
-  tester::CaseMonitor::onlyInstance().report();
 
 #define TEST_RESULT tester::TestMonitor::anyTestFailed();
 
@@ -884,14 +753,8 @@ void CONCAT(__test_case_, __LINE__)::_run()
 
 #define SIMPLE_REPORT_ALL_TIMERS() tester::TimeTester::simpleReportAllTimers();
 
-#define MAIN_RUN_ALL_TESTS() int main(int argc, char **argv) \
+#define MAIN_RUN_ALL_TESTS() int main() \
 { \
-  if (argc > 1) \
-  { \
-    std::vector<std::string> groups(argc - 1); \
-    groups.assign(argv + 1, argv + argc); \
-    tester::TestMonitor::filterTests(groups); \
-  } \
   tester::TestMonitor::runTests(); \
   return TEST_RESULT; \
 }
