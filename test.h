@@ -514,7 +514,7 @@ namespace tester
     struct DummyType {};
 
     template <typename T>
-      DummyType operator<< (std::ostream& out, T& c);
+      DummyType operator<< (std::ostream& out, const T& c);
 
     template <typename T>
       class CheckIf
@@ -539,7 +539,7 @@ namespace tester
 
       public:
         static const bool streamable = sizeof(check_streamable<T>(out << t)) == sizeof(one);
-        static const bool castable = sizeof(check_castable<T>(0)) == sizeof(one);
+        static const bool castable = sizeof(check_castable<T>(nullptr)) == sizeof(one);
       };
 
     template <typename T, bool streamable, bool castable>
