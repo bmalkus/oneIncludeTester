@@ -308,7 +308,7 @@ namespace tester
   {
     should_run = TestCase::get_current()->add_subcase();
     current = this;
-    if (should_run)
+    if (should_run && name.length() > 0)
     {
       std::cout << prefix << name << " - subcase";
       std::cout << std::endl;
@@ -318,7 +318,7 @@ namespace tester
 
   TestSubcase::~TestSubcase()
   {
-    if (should_run)
+    if (should_run && name.length() > 0)
     {
       prefix = prefix.substr(0, prefix.length() - 4);
       std::ostringstream pref, suff;
@@ -722,7 +722,7 @@ namespace tester
 #define CONCAT(x, y) CONCAT_(x, y)
 
 #define TEST_SUBCASE(name) \
-  if(tester::TestSubcase CONCAT(__test_group_, __LINE__) = tester::TestSubcase(name, __FILE__, __LINE__))
+  if(tester::TestSubcase CONCAT(__test_group_, __LINE__) = tester::TestSubcase(name"", __FILE__, __LINE__))
 
 #define TEST_CASE(name) class CONCAT(__test_case_, __LINE__) : tester::TestCase \
     { \
