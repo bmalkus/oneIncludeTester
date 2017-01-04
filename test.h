@@ -26,7 +26,7 @@ namespace tester
   template <typename T>
   class LeftValue;
 
-  namespace Checker
+  namespace checker
   {
     template <typename T>
       class CheckIf;
@@ -63,7 +63,7 @@ namespace tester
   // ----------------------------------------
   // {{{
 
-  struct almost_equal_type {
+  struct AlmostEqualType {
     bool res;
     long double d1, d2, eps;
   };
@@ -71,19 +71,19 @@ namespace tester
   class Evaluer
   {
   public:
-    Evaluer(std::string expr_, std::string filename_, int lineNo_):
-      expr(expr_), filename(filename_), lineNo(lineNo_)  { }
+    Evaluer(std::string expr, std::string filename, int line_no):
+      expr(expr), filename(filename), line_no(line_no) { }
 
     template <typename T>
-      LeftValue<T> operator<< (T leftVal);
+      LeftValue<T> operator<< (T left_val);
 
-    std::string getExpr() { return expr; }
-    std::string getFilename() { return filename; }
-    int getLineNo() { return lineNo; }
+    std::string get_expr() { return expr; }
+    std::string get_fname() { return filename; }
+    int get_line_no() { return line_no; }
 
   private:
     std::string expr, filename;
-    int lineNo;
+    int line_no;
 
   };
 
@@ -99,37 +99,37 @@ namespace tester
     class LeftValue
     {
     public:
-      LeftValue(U& leftValue_, Evaluer& evaluer_): leftValue(leftValue_), evaluer(evaluer_) { }
+      LeftValue(U& left_value, Evaluer& evaluer): left_value(left_value), evaluer(evaluer) { }
 
       template <typename V>
-        void operator== (V rightValue);
+        void operator== (V right_value);
 
       template <typename V>
-        void operator!= (V rightValue);
+        void operator!= (V right_value);
 
       template <typename V>
-        void operator<= (V rightValue);
+        void operator<= (V right_value);
 
       template <typename V>
-        void operator>= (V rightValue);
+        void operator>= (V right_value);
 
       template <typename V>
-        void operator< (V rightValue);
+        void operator< (V right_value);
 
       template <typename V>
-        void operator> (V rightValue);
+        void operator> (V right_value);
 
       template <typename V>
-        PUT_COMPLEX_LOGICAL_EXPRESSIONS_IN_PARENTHESIS operator&& (V rightValue);
+        PUT_COMPLEX_LOGICAL_EXPRESSIONS_IN_PARENTHESIS operator&& (V right_value);
 
       template <typename V>
-        PUT_COMPLEX_LOGICAL_EXPRESSIONS_IN_PARENTHESIS operator|| (V rightValue);
+        PUT_COMPLEX_LOGICAL_EXPRESSIONS_IN_PARENTHESIS operator|| (V right_value);
 
       template <typename V>
-        void assert(bool val, std::string op, V rightValue);
+        void assert(bool val, std::string op, V right_value);
 
     private:
-      U leftValue;
+      U left_value;
       Evaluer& evaluer;
     };
 
@@ -137,13 +137,13 @@ namespace tester
     class LeftValue<bool>
     {
     public:
-      LeftValue(bool leftValue, Evaluer& evaluer_): evaluer(evaluer_) { assert(leftValue); }
+      LeftValue(bool left_value, Evaluer& evaluer_): evaluer(evaluer_) { assert(left_value); }
 
       template <typename V>
-        PUT_COMPLEX_LOGICAL_EXPRESSIONS_IN_PARENTHESIS operator&& (V rightValue);
+        PUT_COMPLEX_LOGICAL_EXPRESSIONS_IN_PARENTHESIS operator&& (V right_value);
 
       template <typename V>
-        PUT_COMPLEX_LOGICAL_EXPRESSIONS_IN_PARENTHESIS operator|| (V rightValue);
+        PUT_COMPLEX_LOGICAL_EXPRESSIONS_IN_PARENTHESIS operator|| (V right_value);
 
       void assert(bool val);
 
@@ -152,12 +152,12 @@ namespace tester
     };
 
   template<>
-    class LeftValue<almost_equal_type>
+    class LeftValue<AlmostEqualType>
     {
     public:
-      LeftValue(almost_equal_type leftValue, Evaluer& evaluer_): evaluer(evaluer_) { assert(leftValue); }
+      LeftValue(AlmostEqualType left_value, Evaluer& evaluer_): evaluer(evaluer_) { assert(left_value); }
 
-      void assert(almost_equal_type val);
+      void assert(AlmostEqualType val);
 
     private:
       Evaluer& evaluer;
@@ -173,16 +173,16 @@ namespace tester
 
   class TestMonitor {
   public:
-    static void registerTestCase(TestCase *ptc);
+    static void register_test_case(TestCase *ptc);
 
-    static bool anyTestFailed();
-    static void TestCaseResult(bool passed);
-    static void runTests();
+    static bool any_test_failed();
+    static void test_case_result(bool passed);
+    static void run_rests();
 
   private:
-    static int overallyFailed;
-    static int overallyRun;
-    static std::vector<TestCase*> testCases;
+    static int overally_failed;
+    static int overally_run;
+    static std::vector<TestCase*> test_cases;
   };
 
   // }}}
@@ -343,15 +343,15 @@ namespace tester
   // {{{
 
   template <typename T>
-    LeftValue<T> Evaluer::operator<< (T leftValue)
+    LeftValue<T> Evaluer::operator<< (T left_value)
     {
-      return LeftValue<T>(leftValue, *this);
+      return LeftValue<T>(left_value, *this);
     }
 
   template <>
-    LeftValue<almost_equal_type> Evaluer::operator<< (almost_equal_type result)
+    LeftValue<AlmostEqualType> Evaluer::operator<< (AlmostEqualType result)
     {
-      return LeftValue<almost_equal_type>(result, *this);
+      return LeftValue<AlmostEqualType>(result, *this);
     }
 
 
@@ -363,47 +363,47 @@ namespace tester
 
   template <typename U>
   template <typename V>
-    void LeftValue<U>::operator> (V rightValue)
+    void LeftValue<U>::operator> (V right_value)
     {
-      assert(leftValue > rightValue, ">", rightValue);
+      assert(left_value > right_value, ">", right_value);
     }
 
   template <typename U>
   template <typename V>
-    void LeftValue<U>::operator< (V rightValue)
+    void LeftValue<U>::operator< (V right_value)
     {
-      assert(leftValue < rightValue, "<", rightValue);
+      assert(left_value < right_value, "<", right_value);
     }
 
   template <typename U>
   template <typename V>
-    void LeftValue<U>::operator>= (V rightValue)
+    void LeftValue<U>::operator>= (V right_value)
     {
-      assert(leftValue >= rightValue, ">=", rightValue);
+      assert(left_value >= right_value, ">=", right_value);
     }
 
   template <typename U>
   template <typename V>
-    void LeftValue<U>::operator<= (V rightValue)
+    void LeftValue<U>::operator<= (V right_value)
     {
-      assert(leftValue <= rightValue, "<=", rightValue);
+      assert(left_value <= right_value, "<=", right_value);
     }
 
   template <typename U>
   template <typename V>
-    void LeftValue<U>::operator!= (V rightValue)
+    void LeftValue<U>::operator!= (V right_value)
     {
-      assert(leftValue != rightValue, "!=", rightValue);
+      assert(left_value != right_value, "!=", right_value);
     }
 
   template <typename U>
   template <typename V>
-    void LeftValue<U>::operator== (V rightValue)
+    void LeftValue<U>::operator== (V right_value)
     {
-      assert(leftValue == rightValue, "==", rightValue);
+      assert(left_value == right_value, "==", right_value);
     }
 
-  void assertCommonPart(std::ostream &out, bool passed, Evaluer &evaluer)
+  void assert_common_part(std::ostream &out, bool passed, Evaluer &evaluer)
   {
     TestCase::get_current()->add_check(passed);
     if (auto *subcase = TestSubcase::get_current())
@@ -411,8 +411,8 @@ namespace tester
 
     std::ostringstream pref, suff;
     if (!passed)
-      out << prefix << "at " << evaluer.getFilename() << ":" << evaluer.getLineNo() << ":" << std::endl;
-    pref << prefix << "CHECK(" << evaluer.getExpr()  << ")  ";
+      out << prefix << "at " << evaluer.get_fname() << ":" << evaluer.get_line_no() << ":" << std::endl;
+    pref << prefix << "CHECK(" << evaluer.get_expr()  << ")  ";
     suff << (passed ? "  passed" : "  FAILED");
     int fillLen = std::max(_WIDTH - signed(pref.str().length()) - signed(suff.str().length()), 3);
     out << pref.str() << std::string(std::max(fillLen, 0), '.') << suff.str() << std::endl;
@@ -421,14 +421,14 @@ namespace tester
 
   template <typename U>
   template <typename V>
-    void LeftValue<U>::assert (bool val, std::string op, V rightValue)
+    void LeftValue<U>::assert (bool val, std::string op, V right_value)
     {
       int prec = std::cout.precision();
       std::cout.precision(_DOUBLE_PRECISION);
 
       std::ostream& out = val ? std::cout : std::cerr;
-      assertCommonPart(out, val, evaluer);
-      out << Checker::Dummy<U>::repr(leftValue) << " " << op << " " << Checker::Dummy<V>::repr(rightValue) << " /" << std::endl;
+      assert_common_part(out, val, evaluer);
+      out << checker::Dummy<U>::repr(left_value) << " " << op << " " << checker::Dummy<V>::repr(right_value) << " /" << std::endl;
 
       std::cout.precision(prec);
     }
@@ -439,20 +439,20 @@ namespace tester
     std::cout.precision(_DOUBLE_PRECISION);
 
     std::ostream& out = val ? std::cout : std::cerr;
-    assertCommonPart(out, val, evaluer);
+    assert_common_part(out, val, evaluer);
     out << std::boolalpha << val << " /" << std::endl;
 
     std::cout.precision(prec);
   }
 
-  void LeftValue<almost_equal_type>::assert (almost_equal_type res)
+  void LeftValue<AlmostEqualType>::assert (AlmostEqualType res)
   {
     int prec = std::cout.precision();
     std::cout.precision(_DOUBLE_PRECISION);
 
     bool val = res.res;
     std::ostream& out = val ? std::cout : std::cerr;
-    assertCommonPart(out, val, evaluer);
+    assert_common_part(out, val, evaluer);
     out << res.d1 << " ~= " << res.d2 << " / ( +/- " << DEFAULT_EPS << " ) -> " << std::boolalpha << val << std::endl;
 
     std::cout.precision(prec);
@@ -464,45 +464,45 @@ namespace tester
   // ----------------------------------------
   // {{{
 
-  int TestMonitor::overallyFailed = 0;
-  int TestMonitor::overallyRun = 0;
-  std::vector<TestCase*> TestMonitor::testCases;
+  int TestMonitor::overally_failed = 0;
+  int TestMonitor::overally_run = 0;
+  std::vector<TestCase*> TestMonitor::test_cases;
 
-  void TestMonitor::registerTestCase(TestCase *ptc)
+  void TestMonitor::register_test_case(TestCase *ptc)
   {
-    testCases.push_back(ptc);
+    test_cases.push_back(ptc);
   }
 
-  void TestMonitor::runTests()
+  void TestMonitor::run_rests()
   {
-    if (testCases.empty())
+    if (test_cases.empty())
     {
       std::cerr << "No cases to run" << std::endl;
       return;
     }
-    for (auto tcIt = testCases.begin(); tcIt != testCases.end(); ++tcIt)
+    for (auto tcIt = test_cases.begin(); tcIt != test_cases.end(); ++tcIt)
     {
       bool passed = (*tcIt)->run();
-      TestMonitor::TestCaseResult(passed);
+      TestMonitor::test_case_result(passed);
     }
 
     std::cerr << std::string(std::max(_WIDTH, 0), '_') << std::endl;
     std::ostringstream suff;
     suff << "passed: "
-      << int(double(100*(overallyRun - overallyFailed))/overallyRun)
-      << "% ( " << (overallyRun - overallyFailed) << " / " << overallyRun << " )";
+      << int(double(100*(overally_run - overally_failed))/overally_run)
+      << "% ( " << (overally_run - overally_failed) << " / " << overally_run << " )";
     std::cerr << std::string(std::max(_WIDTH - signed(suff.str().length()), 0), ' ') << suff.str() << std::endl;
   }
 
-  void TestMonitor::TestCaseResult(bool passed)
+  void TestMonitor::test_case_result(bool passed)
   {
-    overallyFailed += !passed;
-    ++overallyRun;
+    overally_failed += !passed;
+    ++overally_run;
   }
 
-  bool TestMonitor::anyTestFailed()
+  bool TestMonitor::any_test_failed()
   {
-    return overallyFailed;
+    return overally_failed;
   }
 
   // }}}
@@ -511,7 +511,7 @@ namespace tester
   // ----------------------------------------
   // {{{
 
-  namespace Checker
+  namespace checker
   {
     struct DummyType {};
 
@@ -528,20 +528,20 @@ namespace tester
         static T &t;
 
         template <typename C>
-          static one checkStreamable(std::ostream&);
+          static one check_streamable(std::ostream&);
         template <typename C>
-          static two checkStreamable(DummyType);
+          static two check_streamable(DummyType);
 
         template <typename A, std::string (A::*)()>
           struct check_type;
         template <typename C>
-          static one checkCastable(check_type<C, &C::operator std::string>*);
+          static one check_castable(check_type<C, &C::operator std::string>*);
         template <typename C>
-          static two checkCastable(...);
+          static two check_castable(...);
 
       public:
-        static const bool streamable = sizeof(checkStreamable<T>(out << t)) == sizeof(char);
-        static const bool castable = sizeof(checkCastable<T>(0)) == sizeof(char);
+        static const bool streamable = sizeof(check_streamable<T>(out << t)) == sizeof(one);
+        static const bool castable = sizeof(check_castable<T>(0)) == sizeof(one);
       };
 
     template <typename T, bool streamable, bool castable>
@@ -579,7 +579,7 @@ namespace tester
         }
       };
   }
-  
+
   // }}}
   // ----------------------------------------
   // TimeTester class with definitions
@@ -595,9 +595,9 @@ namespace tester
     void start();
     void stop();
     timespec get_diff();
-    void prettyReport();
-    void simpleReport();
-    static void simpleReportAllTimers();
+    void pretty_report();
+    void simple_report();
+    static void simple_report_all_timers();
 
   private:
     timespec start_time, stop_time, diff;
@@ -605,7 +605,7 @@ namespace tester
 
   };
 
-  std::map<std::string, TimeTester> timeTesters;
+  std::map<std::string, TimeTester> time_resters;
 
   TimeTester::TimeTester(std::string name): name(name) { }
 
@@ -634,7 +634,7 @@ namespace tester
     return diff;
   }
 
-  void TimeTester::prettyReport()
+  void TimeTester::pretty_report()
   {
     std::ostringstream pref, suff;
     pref << prefix << "Timer ";
@@ -643,7 +643,7 @@ namespace tester
       pref << "\"" << name << "\"";
     }
     pref << " result" << "  ";
-    
+
     suff << "  " << diff.tv_sec << "s ";
     long res = diff.tv_nsec;
     int nsec = res % 1000;
@@ -668,7 +668,7 @@ namespace tester
     std::cerr << pref.str() << std::string(std::max(fillLen, 0), '.') << suff.str() << std::endl;
   }
 
-  void TimeTester::simpleReport()
+  void TimeTester::simple_report()
   {
     std::cerr << name << "    ";
     long res = diff.tv_nsec;
@@ -684,11 +684,11 @@ namespace tester
     std::cerr << std::endl;
   }
 
-  void TimeTester::simpleReportAllTimers()
+  void TimeTester::simple_report_all_timers()
   {
-    for (auto tester : timeTesters)
+    for (auto tester : time_resters)
     {
-      tester.second.simpleReport();
+      tester.second.simple_report();
     }
   }
 
@@ -698,9 +698,9 @@ namespace tester
   // ----------------------------------------
   // {{{
 
-  almost_equal_type almostEqual(long double d1, long double d2, long double eps=DEFAULT_EPS)
+  AlmostEqualType almost_equal(long double d1, long double d2, long double eps=DEFAULT_EPS)
   {
-    almost_equal_type res;
+    AlmostEqualType res;
     res.d1 = d1;
     res.d2 = d2;
     res.eps = eps;
@@ -727,7 +727,7 @@ namespace tester
 #define TEST_CASE(name) class CONCAT(__test_case_, __LINE__) : tester::TestCase \
     { \
     public: \
-      CONCAT(__test_case_, __LINE__)(std::string tc_name, std::string file, int line): TestCase(tc_name, file, line) { tester::TestMonitor::registerTestCase(this); } \
+      CONCAT(__test_case_, __LINE__)(std::string tc_name, std::string file, int line): TestCase(tc_name, file, line) { tester::TestMonitor::register_test_case(this); } \
     private: \
       void _run(); \
     }; \
@@ -738,24 +738,24 @@ void CONCAT(__test_case_, __LINE__)::_run()
 
 #define PRINT(str) std::cout << tester::prefix << "#### " << str << " ####" << std::endl;
 
-#define TEST_RESULT tester::TestMonitor::anyTestFailed();
+#define TEST_RESULT tester::TestMonitor::any_test_failed();
 
 #define START_TIMER(name) std::cout << tester::prefix << "Starting timer \"" << name << "\" (" << __FILE__ << ":" << __LINE__ << ")" << std::endl;\
-  tester::timeTesters[name] = tester::TimeTester(name);\
-  tester::timeTesters[name].start();
+  tester::time_resters[name] = tester::TimeTester(name);\
+  tester::time_resters[name].start();
 
-#define STOP_TIMER(name) tester::timeTesters[name].stop();\
+#define STOP_TIMER(name) tester::time_resters[name].stop();\
   std::cout << tester::prefix << "Stopping timer \"" << name << "\"" << std::endl;\
 
-#define PRETTY_REPORT_TIMER(name) tester::timeTesters[name].prettyReport();
+#define PRETTY_REPORT_TIMER(name) tester::time_resters[name].pretty_report();
 
-#define SIMPLE_REPORT_TIMER(name) tester::timeTesters[name].simpleReport();
+#define SIMPLE_REPORT_TIMER(name) tester::time_resters[name].simple_report();
 
-#define SIMPLE_REPORT_ALL_TIMERS() tester::TimeTester::simpleReportAllTimers();
+#define SIMPLE_REPORT_ALL_TIMERS() tester::TimeTester::simple_report_all_timers();
 
 #define MAIN_RUN_ALL_TESTS() int main() \
 { \
-  tester::TestMonitor::runTests(); \
+  tester::TestMonitor::run_rests(); \
   return TEST_RESULT; \
 }
 
