@@ -414,7 +414,7 @@ namespace tester
     suff << (passed ? "  passed" : "  FAILED");
     int fillLen = std::max(_WIDTH - signed(pref.str().length()) - signed(suff.str().length()), 3);
     out << pref.str() << std::string(std::max(fillLen, 0), '.') << suff.str() << std::endl;
-    out << prefix << "     / ";
+    out << prefix << "    / ";
   }
 
   template <typename U>
@@ -426,8 +426,38 @@ namespace tester
 
       std::ostream& out = val ? std::cout : std::cerr;
       assert_common_part(out, val, evaluer);
-      out << checker::Dummy<U>::repr(left_value) << " " << op << " " << checker::Dummy<V>::repr(right_value) << " /" << std::endl;
 
+      std::string left_repr = checker::Dummy<U>::repr(left_value);
+      std::string right_repr = checker::Dummy<V>::repr(right_value);
+
+      size_t posl = left_repr.find("\n");
+      size_t posr = right_repr.find("\n");
+      if (posl != std::string::npos || posr != std::string::npos)
+      {
+        std::string repl = "\n" + prefix + "    / ";
+
+        if (posl != std::string::npos)
+          do
+            left_repr.replace(posl, 1, repl);
+          while ((posl = left_repr.find("\n", posl + 1)) != std::string::npos && posl != left_repr.length() - 1);
+
+        if (posr != std::string::npos)
+          do
+            right_repr.replace(posr, 1, repl);
+          while ((posr = left_repr.find("\n", posr + 1)) != std::string::npos && posr != right_repr.length() - 1);
+
+        out << left_repr;
+        if (posl == std::string::npos)
+          out << "\n";
+        out << prefix << "       " << op << repl;
+        out << right_repr;
+        if (posr == std::string::npos)
+          out << "\n";
+      }
+      else
+      {
+        out << left_repr << " " << op << " " << right_repr << " /" << std::endl;
+      }
       std::cout.precision(prec);
     }
 
@@ -554,7 +584,7 @@ namespace tester
         static std::string repr(T t)
         {
           std::ostringstream ss;
-          ss  << t;
+          ss << t;
           return ss.str();
         }
       };
