@@ -248,7 +248,6 @@ namespace tester
     {
       suff << "  " << int(double(100*passed)/tests) << "% ( " << passed << " / "
         << tests << " ) - FAILED";
-      std::cerr << prefix << "at " << file << ":" << line << ":" << std::endl;
     }
     std::cerr << pref.str() << std::string(std::max(_WIDTH - signed(pref.str().length()) - signed(suff.str().length()), 3), '.') << suff.str() << std::endl;
 
@@ -329,7 +328,6 @@ namespace tester
       else
       {
         suff << "  subcase FAILED";
-        std::cerr << prefix << "at " << file << ":" << line << ":" << std::endl;
       }
       std::cerr << pref.str() << std::string(std::max(_WIDTH - signed(pref.str().length()) - signed(suff.str().length()), 3), '.') << suff.str() << std::endl;
     }
