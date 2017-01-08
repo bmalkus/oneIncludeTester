@@ -12,10 +12,11 @@
 #include <algorithm>
 #include <cmath>
 #include <vector>
+#include <float.h>
 
 #define WIDTH TERM
-#define DEFAULT_EPS 1e-8
-#define DOUBLE_PRINT_PREC 9
+#define DEFAULT_EPS FLT_EPSILON
+#define FLOAT_PRINT_PRECISION 9
 
 #ifdef __clang__
 #pragma clang diagnostic ignored "-Woverloaded-shift-op-parentheses"
@@ -56,7 +57,7 @@ namespace tester
 
 #endif
 
-  const int _DOUBLE_PRECISION = DOUBLE_PRINT_PREC + 1;
+  const int _FLOAT_PRECISION = FLOAT_PRINT_PRECISION + 1;
 
   // ----------------------------------------
   // Evaluer class
@@ -422,7 +423,7 @@ namespace tester
     void LeftValue<U>::assert (bool val, std::string op, V right_value)
     {
       int prec = std::cout.precision();
-      std::cout.precision(_DOUBLE_PRECISION);
+      std::cout.precision(_FLOAT_PRECISION);
 
       std::ostream& out = val ? std::cout : std::cerr;
       assert_common_part(out, val, evaluer);
@@ -464,7 +465,7 @@ namespace tester
   void LeftValue<bool>::assert (bool val)
   {
     int prec = std::cout.precision();
-    std::cout.precision(_DOUBLE_PRECISION);
+    std::cout.precision(_FLOAT_PRECISION);
 
     std::ostream& out = val ? std::cout : std::cerr;
     assert_common_part(out, val, evaluer);
@@ -476,7 +477,7 @@ namespace tester
   void LeftValue<AlmostEqualType>::assert (AlmostEqualType res)
   {
     int prec = std::cout.precision();
-    std::cout.precision(_DOUBLE_PRECISION);
+    std::cout.precision(_FLOAT_PRECISION);
 
     bool val = res.res;
     std::ostream& out = val ? std::cout : std::cerr;
@@ -726,6 +727,8 @@ namespace tester
   // ----------------------------------------
   // {{{
 
+  // TODO are float/double version needed?
+  // TODO implement better comparsion
   AlmostEqualType almost_equal(long double d1, long double d2, long double eps=DEFAULT_EPS)
   {
     AlmostEqualType res;
@@ -829,7 +832,7 @@ std::cout << std::endl << "}" << std::endl;
 
 #undef WIDTH
 #undef DEFAULT_EPS
-#undef DOUBLE_PRINT_PREC
+#undef FLOAT_PRINT_PRECISION
 
   // }}}
 
