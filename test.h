@@ -15,7 +15,7 @@
 #include <float.h>
 
 #define WIDTH TERM
-#define DEFAULT_EPS FLT_EPSILON
+#define TESTER_MAX_ULPS 2
 #define FLOAT_PRINT_PRECISION 9
 
 #ifdef __clang__
@@ -66,7 +66,8 @@ namespace tester
 
   struct AlmostEqualType {
     bool res;
-    long double d1, d2, eps;
+    float st, nd;
+    int max_ulps;
   };
 
   class Evaluer
@@ -482,7 +483,7 @@ namespace tester
     bool val = res.res;
     std::ostream& out = val ? std::cout : std::cerr;
     assert_common_part(out, val, evaluer);
-    out << res.d1 << " ~= " << res.d2 << " / ( +/- " << DEFAULT_EPS << " ) -> " << std::boolalpha << val << std::endl;
+    out << res.st << " ~= " << res.nd << " / ( +/- " << res.max_ulps << " ULPs ) -> " << std::boolalpha << val << std::endl;
 
     std::cout.precision(prec);
   }
@@ -729,13 +730,30 @@ namespace tester
 
   // TODO are float/double version needed?
   // TODO implement better comparsion
-  AlmostEqualType almost_equal(long double d1, long double d2, long double eps=DEFAULT_EPS)
+  AlmostEqualType almost_equal(float st, float nd, int max_ulps = TESTER_MAX_ULPS)
   {
     AlmostEqualType res;
-    res.d1 = d1;
-    res.d2 = d2;
-    res.eps = eps;
-    res.res = std::abs(d1 - d2) < eps;
+    res.st = st;
+    res.nd = nd;
+    res.max_ulps = max_ulps;
+
+    if ((st < 0) != (nd < 0))
+    {
+      res.res = st == nd;
+      return res;
+    }
+
+    union float_i
+    {
+      float f;
+      int32_t i;
+    };
+
+    float_i st_f, nd_f;
+    st_f.f = st;
+    nd_f.f = nd;
+
+    res.res = std::abs(st_f.i - nd_f.i) <= max_ulps;
     return res;
   }
 
@@ -831,7 +849,7 @@ std::cout << std::endl << "}" << std::endl;
 #endif
 
 #undef WIDTH
-#undef DEFAULT_EPS
+#undef TESTER_MAX_ULPS
 #undef FLOAT_PRINT_PRECISION
 
   // }}}
